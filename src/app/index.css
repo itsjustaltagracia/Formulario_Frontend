@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Paleta principal ── */
+  --color-primary:        #d1323b;   /* rojo institucional */
+  --color-primary-dark:   #a8252d;
+  --color-secondary:      #51626f;   /* gris azulado */
+  --color-dark:           #2d3547;   /* azul marino oscuro */
+  --color-accent:         #f3bf99;   /* melocotón */
+  --color-muted:          #c1c6c8;   /* gris claro */
+
+  /* ── Fondo general ── */
+  --color-background-light: #f4f5f7;
+  --color-background-dark:  #2d3547;
+}
+
+body {
+  font-family: Inter, system-ui, sans-serif;
+  background-color: #f4f5f7;
+}
