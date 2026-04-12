@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-/**
- * COMPONENTES LOCALES
- */
 const FormWrapper = ({ children }) => (
   <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 flex justify-center items-start">
     <div className="w-full max-w-4xl bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
@@ -23,33 +21,29 @@ const FormFooter = ({ nextLabel }) => (
   </div>
 );
 
-// ── Constantes de Estilo ────────────────────────────────────────────────────────
-const P = "#51626f"; 
-const FOCUS = `focus:border-[#51626f] focus:ring-2 focus:ring-[#51626f]/10`;
+const P      = "#51626f";
+const FOCUS  = `focus:border-[#51626f] focus:ring-2 focus:ring-[#51626f]/10`;
 const INPUT  = `w-full px-4 py-3 rounded-lg border border-slate-300 outline-none transition-all ${FOCUS}`;
 const SELECT = `${INPUT} bg-white appearance-none`;
-const NIVEL_OPS = ["primaria","bachillerato","bachiller_tecnico","Técnico","universitario","licenciatura","maestria","ingenieria","doctorado","otros","ninguno"];
-const NIVEL_LABELS = { 
-  primaria: "Educación primaria", 
-  bachillerato: "Bachillerato", 
-  bachiller_tecnico: "Bachiller Técnico",
-  Técnico: "Técnico", 
-  universitario: "Universitario", 
-  licenciatura: "Licenciatura", 
-  maestria: "Maestría", 
-  ingenieria: "Ingeniería", 
-  doctorado: "Doctorado", 
-  otros: "Otros", 
-  ninguno: "Ninguno / No aplica" 
-};
-const NIVEL_CON_TIPO = ["licenciatura","maestria","ingenieria","doctorado","otros","Técnico", "bachiller_tecnico"];
 
-// ── Hook Personalizado para Niveles Académicos ──────────────────────────────────
+const NIVEL_OPS = [
+  "primaria","bachillerato","bachiller_tecnico","Técnico",
+  "universitario","licenciatura","maestria","ingenieria","doctorado","otros","ninguno",
+];
+const NIVEL_LABELS = {
+  primaria: "Educación primaria", bachillerato: "Bachillerato",
+  bachiller_tecnico: "Bachiller Técnico", Técnico: "Técnico",
+  universitario: "Universitario", licenciatura: "Licenciatura",
+  maestria: "Maestría", ingenieria: "Ingeniería", doctorado: "Doctorado",
+  otros: "Otros", ninguno: "Ninguno / No aplica",
+};
+const NIVEL_CON_TIPO = ["licenciatura","maestria","ingenieria","doctorado","otros","Técnico","bachiller_tecnico"];
+
 function useNivelAcademico(init = {}) {
   const [nivel,    setNivel]    = useState(init.nivel    || "");
   const [duracion, setDuracion] = useState(init.duracion || "");
-  const [tipo,      setTipo]     = useState(init.tipo      || "");
-  const [showDur,    setShowDur]  = useState(!!init.nivel && init.nivel !== "ninguno");
+  const [tipo,     setTipo]     = useState(init.tipo     || "");
+  const [showDur,  setShowDur]  = useState(!!init.nivel && init.nivel !== "ninguno");
   const [showTipo, setShowTipo] = useState(NIVEL_CON_TIPO.includes(init.nivel));
 
   const onChange = (v) => {
@@ -61,27 +55,29 @@ function useNivelAcademico(init = {}) {
   return { nivel, duracion, setDuracion, tipo, setTipo, showDur, showTipo, onChange };
 }
 
-export default function App() {
-  const [saved, setSaved] = useState(() => JSON.parse(localStorage.getItem("entrevista") || "{}"));
+export default function Step1Form() {
+  const navigate = useNavigate();
+
+  const [saved, setSaved]         = useState(() => JSON.parse(localStorage.getItem("entrevista") || "{}"));
   const [modoLectura, setModoLectura] = useState(() => localStorage.getItem("entrevista_modo_lectura") === "true");
   const [currentDate, setCurrentDate] = useState("");
-  const [query, setQuery]               = useState("");
-  const [resultados, setResultados]   = useState([]);
-  const [error, setError]               = useState("");
+  const [query,       setQuery]       = useState("");
+  const [resultados,  setResultados]  = useState([]);
+  const [errores,     setErrores]     = useState([]); // array de strings
 
   const [entrevistados, setEntrevistados] = useState(() => {
     if (saved.entrevistados) return saved.entrevistados.map(e => ({ ...e, id: e.id || Date.now() }));
     if (saved.entrevistado)  return [{ id: Date.now(), nombre: saved.entrevistado, parentesco: saved.parentesco || "", parentesco_otro: saved.parentesco_otro || "" }];
     return [{ id: Date.now(), nombre: "", parentesco: "", parentesco_otro: "" }];
   });
-  
+
   const [mostrarTutorFields, setMostrarTutorFields] = useState(
     saved.entrevistados?.some(e => e.parentesco === "tutor") || saved.parentesco === "tutor" || false
   );
 
-  const madre  = useNivelAcademico({ nivel: saved.nivel_madre,  duracion: saved.duracion_madre,  tipo: saved.tipo_madre  });
-  const padre  = useNivelAcademico({ nivel: saved.nivel_padre,  duracion: saved.duracion_padre,  tipo: saved.tipo_padre  });
-  const tutor  = useNivelAcademico({ nivel: saved.nivel_tutor,  duracion: saved.duracion_tutor,  tipo: saved.tipo_tutor  });
+  const madre = useNivelAcademico({ nivel: saved.nivel_madre, duracion: saved.duracion_madre, tipo: saved.tipo_madre });
+  const padre = useNivelAcademico({ nivel: saved.nivel_padre, duracion: saved.duracion_padre, tipo: saved.tipo_padre });
+  const tutor = useNivelAcademico({ nivel: saved.nivel_tutor, duracion: saved.duracion_tutor, tipo: saved.tipo_tutor });
 
   const [vinculacion,            setVinculacion]           = useState(saved.vinculacion || "");
   const [especificarVinculacion, setEspecificarVinculacion] = useState(saved.especificar_vinculacion || "");
@@ -91,13 +87,9 @@ export default function App() {
 
   const handleVinculacionToggle = (valor) => {
     if (modoLectura) return;
-    if (vinculacion === valor) {
-      setVinculacion("");
-      setEspecificarVinculacion("");
-    } else {
-      setVinculacion(valor);
-    }
-    if (error) setError("");
+    setVinculacion(v => v === valor ? "" : valor);
+    if (valor !== vinculacion) setEspecificarVinculacion("");
+    if (errores.length) setErrores([]);
   };
 
   const buscar = (texto) => {
@@ -151,29 +143,51 @@ export default function App() {
     window.location.reload();
   };
 
-  const handleNombreChange     = (i, v) => { const a = [...entrevistados]; a[i].nombre = v; setEntrevistados(a); if(error) setError(""); };
-  const handleParentescoChange = (i, v) => { const a = [...entrevistados]; a[i].parentesco = v; setEntrevistados(a); if(error) setError(""); };
-  const handleOtroChange        = (i, v) => { const a = [...entrevistados]; a[i].parentesco_otro = v; setEntrevistados(a); if(error) setError(""); };
-  const addEntrevistado     = () => setEntrevistados([...entrevistados, { id: Date.now(), nombre: "", parentesco: "", parentesco_otro: "" }]);
-  const removeEntrevistado  = (i) => { if (entrevistados.length > 1) setEntrevistados(entrevistados.filter((_, j) => j !== i)); };
+  const handleNombreChange     = (i, v) => { const a = [...entrevistados]; a[i].nombre = v; setEntrevistados(a); if(errores.length) setErrores([]); };
+  const handleParentescoChange = (i, v) => { const a = [...entrevistados]; a[i].parentesco = v; setEntrevistados(a); if(errores.length) setErrores([]); };
+  const handleOtroChange       = (i, v) => { const a = [...entrevistados]; a[i].parentesco_otro = v; setEntrevistados(a); if(errores.length) setErrores([]); };
+  const addEntrevistado    = () => setEntrevistados([...entrevistados, { id: Date.now(), nombre: "", parentesco: "", parentesco_otro: "" }]);
+  const removeEntrevistado = (i) => { if (entrevistados.length > 1) setEntrevistados(entrevistados.filter((_, j) => j !== i)); };
+
+  // ── Validación completa ────────────────────────────────────────────────────
+  const validar = (form) => {
+    const f   = (n) => form.get(n)?.trim() || "";
+    const err = [];
+
+    // Datos básicos — formulario es opcional, sección es opcional
+    if (!f("formulario")) err.push("Número de formulario");
+    if (!f("nombres"))   err.push("Nombre(s) del estudiante");
+    if (!f("apellidos")) err.push("Apellido(s) del estudiante");
+    if (!f("sexo"))      err.push("Sexo del estudiante");
+    if (!f("edad"))      err.push("Edad del estudiante");
+
+    // Entrevistados
+    entrevistados.forEach((ent, i) => {
+      if (!ent.nombre.trim()) err.push(`Nombre del entrevistado ${i + 1}`);
+      if (!ent.parentesco)    err.push(`Parentesco del entrevistado ${i + 1}`);
+      if (ent.parentesco === "otro" && !ent.parentesco_otro.trim())
+        err.push(`Especifique el parentesco del entrevistado ${i + 1}`);
+    });
+
+    // Nivel académico madre y padre (al menos el nivel)
+    if (!madre.nivel) err.push("Nivel académico de la madre");
+    if (!padre.nivel) err.push("Nivel académico del padre");
+
+    // Estado de estudios cuando aplica
+    if (madre.showDur && !madre.duracion) err.push("Estado de estudios de la madre");
+    if (padre.showDur && !padre.duracion) err.push("Estado de estudios del padre");
+    if (mostrarTutorFields && tutor.showDur && !tutor.duracion) err.push("Estado de estudios del tutor legal");
+
+    return err;
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (modoLectura) { window.location.href = "/paso2"; return; }
-    
-    const form = new FormData(e.target);
-    const nombres = form.get("nombres")?.trim();
-    const apellidos = form.get("apellidos")?.trim();
+    if (modoLectura) { navigate("/paso2"); return; }
 
-    if (!nombres || !apellidos) { 
-      setError("Faltan datos del estudiante (Nombres/Apellidos)"); 
-      return; 
-    }
-    
-    if (entrevistados.some(ent => !ent.nombre.trim() || !ent.parentesco)) { 
-      setError("Complete la información del entrevistado"); 
-      return; 
-    }
+    const form = new FormData(e.target);
+    const err  = validar(form);
+    if (err.length) { setErrores(err); return; }
 
     const data = {
       ...saved, ...Object.fromEntries(form.entries()), entrevistados,
@@ -183,22 +197,23 @@ export default function App() {
       vinculacion, especificar_vinculacion: especificarVinculacion,
     };
     localStorage.setItem("entrevista", JSON.stringify(data));
-    window.location.href = "/paso2";
+    navigate("/paso2");
   };
 
   const NivelSelect = ({ label, hook }) => (
     <div>
-      <label className="block text-sm font-medium text-slate-700 mb-2">{label}</label>
-      <select value={hook.nivel} onChange={e => { hook.onChange(e.target.value); if(error) setError(""); }} className={SELECT}>
+      {label && <label className="block text-sm font-medium text-slate-700 mb-2">{label}</label>}
+      <select value={hook.nivel} onChange={e => { hook.onChange(e.target.value); if(errores.length) setErrores([]); }} className={SELECT}>
         <option value="">Seleccione</option>
         {NIVEL_OPS.map(v => <option key={v} value={v}>{NIVEL_LABELS[v]}</option>)}
       </select>
       {hook.showDur && (
         <div className="mt-4">
           <label className="block text-sm font-medium text-slate-700 mb-2">Estado de estudios</label>
-          <select value={hook.duracion} onChange={e => { hook.setDuracion(e.target.value); if(error) setError(""); }} className={SELECT}>
+          <select value={hook.duracion} onChange={e => { hook.setDuracion(e.target.value); if(errores.length) setErrores([]); }} className={SELECT}>
             <option value="">Seleccione estado</option>
             <option value="completado">Completado</option>
+            <option value="en_proceso">En proceso</option>
             <option value="incompleto">Incompleto</option>
           </select>
         </div>
@@ -206,7 +221,8 @@ export default function App() {
       {hook.showTipo && (
         <div className="mt-4">
           <label className="block text-sm font-medium text-slate-700 mb-2">Especifique el tipo</label>
-          <input value={hook.tipo} onChange={e => { hook.setTipo(e.target.value); if(error) setError(""); }} placeholder="Ej: en Derecho" className={INPUT} type="text" />
+          <input value={hook.tipo} onChange={e => { hook.setTipo(e.target.value); if(errores.length) setErrores([]); }}
+            placeholder="Ej: en Derecho" className={INPUT} type="text" />
         </div>
       )}
     </div>
@@ -232,7 +248,7 @@ export default function App() {
         {/* Stepper */}
         <div className="flex items-center justify-center gap-4 md:gap-8 max-w-3xl mx-auto px-6 md:px-12 mb-8">
           {[
-            { n:1, label:"Datos Básicos",      active:true  },
+            { n:1, label:"Datos Básicos",    active:true  },
             { n:2, label:"Entorno Familiar", active:false },
             { n:3, label:"Expectativas",     active:false },
             { n:4, label:"Preguntas Extras", active:false },
@@ -242,7 +258,7 @@ export default function App() {
                 <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold mb-2 shadow-md"
                   style={{
                     background: s.active ? P : "#e2e8f0",
-                    color:        s.active ? "white" : "#94a3b8",
+                    color:      s.active ? "white" : "#94a3b8",
                     boxShadow:  s.active ? `0 4px 14px rgba(81,98,111,.35)` : "none",
                   }}>
                   {s.n}
@@ -346,15 +362,18 @@ export default function App() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Fecha de Entrevista</label>
-              <input name="fecha" value={currentDate} readOnly className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 cursor-default" type="date" />
+              <input name="fecha" value={currentDate} readOnly
+                className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 cursor-default" type="date" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Formulario</label>
-              <input name="formulario" defaultValue={saved.formulario || ""} placeholder="0" className={INPUT} type="text" onChange={() => error && setError("")} />
+              <label className="block text-sm font-medium text-slate-700 mb-2">Formulario <span className="text-red-400">*</span></label>
+              <input name="formulario" defaultValue={saved.formulario || ""} placeholder="0"
+                className={INPUT} type="text" onChange={() => errores.length && setErrores([])} />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Sección</label>
-              <input name="seccion" defaultValue={saved.seccion || ""} placeholder="0" className={INPUT} type="text" onChange={() => error && setError("")} />
+              <input name="seccion" defaultValue={saved.seccion || ""} placeholder="0"
+                className={INPUT} type="text" onChange={() => errores.length && setErrores([])} />
             </div>
           </div>
 
@@ -366,24 +385,27 @@ export default function App() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Nombre(s)</label>
-                <input name="nombres" defaultValue={saved.nombres || ""} placeholder="Ingrese nombres" className={INPUT} type="text" onChange={() => error && setError("")} />
+                <label className="block text-sm font-medium text-slate-700 mb-2">Nombre(s) <span className="text-red-400">*</span></label>
+                <input name="nombres" defaultValue={saved.nombres || ""} placeholder="Ingrese nombres"
+                  className={INPUT} type="text" onChange={() => errores.length && setErrores([])} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Apellido(s)</label>
-                <input name="apellidos" defaultValue={saved.apellidos || ""} placeholder="Ingrese apellidos" className={INPUT} type="text" onChange={() => error && setError("")} />
+                <label className="block text-sm font-medium text-slate-700 mb-2">Apellido(s) <span className="text-red-400">*</span></label>
+                <input name="apellidos" defaultValue={saved.apellidos || ""} placeholder="Ingrese apellidos"
+                  className={INPUT} type="text" onChange={() => errores.length && setErrores([])} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Sexo</label>
-                <select name="sexo" defaultValue={saved.sexo || ""} className={SELECT} onChange={() => error && setError("")}>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Sexo <span className="text-red-400">*</span></label>
+                <select name="sexo" defaultValue={saved.sexo || ""} className={SELECT} onChange={() => errores.length && setErrores([])}>
                   <option value="">Seleccione</option>
                   <option value="M">Masculino</option>
                   <option value="F">Femenino</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Edad</label>
-                <input name="edad" defaultValue={saved.edad || ""} placeholder="0" className={INPUT} type="number" onChange={() => error && setError("")} />
+                <label className="block text-sm font-medium text-slate-700 mb-2">Edad <span className="text-red-400">*</span></label>
+                <input name="edad" defaultValue={saved.edad || ""} placeholder="0"
+                  className={INPUT} type="number" onChange={() => errores.length && setErrores([])} />
               </div>
             </div>
           </div>
@@ -398,11 +420,16 @@ export default function App() {
               <div key={ent.id} className="mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Entrevistado {index + 1}</label>
-                    <input value={ent.nombre} onChange={e => handleNombreChange(index, e.target.value)} placeholder="Nombre de quien asiste" className={INPUT} type="text" />
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Entrevistado {index + 1} <span className="text-red-400">*</span>
+                    </label>
+                    <input value={ent.nombre} onChange={e => handleNombreChange(index, e.target.value)}
+                      placeholder="Nombre de quien asiste" className={INPUT} type="text" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Parentesco</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Parentesco <span className="text-red-400">*</span>
+                    </label>
                     <select value={ent.parentesco} onChange={e => handleParentescoChange(index, e.target.value)} className={SELECT}>
                       <option value="">Seleccione relación</option>
                       <option value="madre">Madre</option>
@@ -414,8 +441,11 @@ export default function App() {
                     </select>
                     {ent.parentesco === "otro" && (
                       <div className="mt-4">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Especifique el parentesco</label>
-                        <input value={ent.parentesco_otro} onChange={e => handleOtroChange(index, e.target.value)} placeholder="Ej: Abuela, Tía, etc." className={INPUT} type="text" />
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Especifique el parentesco <span className="text-red-400">*</span>
+                        </label>
+                        <input value={ent.parentesco_otro} onChange={e => handleOtroChange(index, e.target.value)}
+                          placeholder="Ej: Abuela, Tía, etc." className={INPUT} type="text" />
                       </div>
                     )}
                   </div>
@@ -431,13 +461,11 @@ export default function App() {
                 )}
               </div>
             ))}
-            
-            {/* Botón personalizado de acompañante */}
+            {/* Botón con el color correcto (#51626f) */}
             <button type="button" onClick={addEntrevistado}
-              className="px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-all hover:shadow-lg active:scale-95 text-sm text-white shadow-md"
-              style={{ background: "#3b82f6" }}>
-              <span className="material-symbols-outlined text-xl">group_add</span>
-              Agregar otra persona
+              className="px-6 py-2 rounded-full font-medium flex items-center gap-2 transition-all hover:opacity-80 text-sm text-white"
+              style={{ background: P }}>
+              <span className="text-lg">+</span> Agregar otra persona
             </button>
           </div>
 
@@ -448,8 +476,18 @@ export default function App() {
               <h2 className="text-xl font-semibold text-slate-800">Nivel académico del Tutor(a)</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <NivelSelect label="Nivel académico - Madre" hook={madre} />
-              <NivelSelect label="Nivel académico - Padre" hook={padre} />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Nivel académico - Madre <span className="text-red-400">*</span>
+                </label>
+                <NivelSelect hook={madre} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Nivel académico - Padre <span className="text-red-400">*</span>
+                </label>
+                <NivelSelect hook={padre} />
+              </div>
             </div>
             {mostrarTutorFields && (
               <div className="mt-8 pt-4">
@@ -458,7 +496,7 @@ export default function App() {
                   <h3 className="text-lg font-semibold text-slate-800">Nivel académico - Tutor Legal</h3>
                 </div>
                 <div className="max-w-md">
-                  <NivelSelect label="" hook={tutor} />
+                  <NivelSelect hook={tutor} />
                 </div>
                 <p className="mt-2 text-xs text-slate-500 italic">Campo opcional — solo aplica si el entrevistado es el tutor legal</p>
               </div>
@@ -467,18 +505,18 @@ export default function App() {
 
           {/* Vinculación Institucional */}
           <div className="pt-6 border-t border-slate-200">
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center gap-3 mb-2">
               <span className="material-symbols-outlined text-2xl" style={{ color: P }}>link</span>
               <h2 className="text-xl font-semibold text-slate-800">Vinculación Institucional</h2>
             </div>
             <p className="text-sm text-slate-600 mb-4">Indicar si proviene de alguna obra salesiana:</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {[
-                { value: "oratorio",   label: "Oratorio"       },
-                { value: "centro",      label: "Centro Juvenil" },
+                { value: "oratorio",   label: "Oratorio" },
+                { value: "centro",     label: "Centro Juvenil" },
                 { value: "cooperador", label: "SSCC", subtitle: "Salesiano cooperador" },
-                { value: "traslado",   label: "Traslado"       },
-                { value: "exalumno",   label: "Exalumno"       },
+                { value: "traslado",   label: "Traslado" },
+                { value: "exalumno",   label: "Exalumno" },
               ].map(item => (
                 <div key={item.value}
                   onClick={() => handleVinculacionToggle(item.value)}
@@ -486,14 +524,14 @@ export default function App() {
                   style={{
                     borderColor: vinculacion === item.value ? P : "#cbd5e1",
                     background:  vinculacion === item.value ? "rgba(81,98,111,.07)" : "white",
-                    boxShadow: vinculacion === item.value ? "inset 0 0 0 1px " + P : "none"
+                    boxShadow:   vinculacion === item.value ? "inset 0 0 0 1px " + P : "none",
                   }}>
                   <div className="flex items-center gap-2">
                     <div style={{
                       width: "16px", height: "16px", borderRadius: "50%",
                       border: `2px solid ${vinculacion === item.value ? P : "#94a3b8"}`,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      transition: "all 0.2s ease"
+                      transition: "all 0.2s ease",
                     }}>
                       {vinculacion === item.value && (
                         <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: P, animation: "fadeIn 0.2s ease" }} />
@@ -502,7 +540,7 @@ export default function App() {
                     <span className="text-sm font-bold" style={{ color: vinculacion === item.value ? P : "#475569" }}>{item.label}</span>
                   </div>
                   {item.subtitle && (
-                    <span className="text-[10px] leading-tight text-slate-400 uppercase tracking-tighter mt-1" 
+                    <span className="text-[10px] leading-tight uppercase tracking-tighter mt-1"
                       style={{ color: vinculacion === item.value ? P : "#94a3b8", opacity: 0.8 }}>
                       {item.subtitle}
                     </span>
@@ -510,17 +548,16 @@ export default function App() {
                 </div>
               ))}
             </div>
-
             {vinculacion && !modoLectura && (
               <p className="mt-3 text-[10px] text-slate-400 italic animate-pulse">
                 * Haz clic de nuevo en <strong>{vinculacion}</strong> para quitar la selección.
               </p>
             )}
-
             {vinculacion && (
-              <div className="mt-6 animate-in fade-in duration-300">
+              <div className="mt-6">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Especifique la relación (ej: exalumno, trabaja, animador, etc.)</label>
-                <textarea value={especificarVinculacion} onChange={e => { setEspecificarVinculacion(e.target.value); if(error) setError(""); }}
+                <textarea value={especificarVinculacion}
+                  onChange={e => { setEspecificarVinculacion(e.target.value); if(errores.length) setErrores([]); }}
                   placeholder="Detalles de la vinculación..." className={INPUT} rows={3} />
               </div>
             )}
@@ -528,19 +565,30 @@ export default function App() {
 
         </fieldset>
 
-        {/* ── MENSAJE DE ERROR ── */}
-        {error && (
-          <div className="mx-auto max-w-lg flex items-center gap-3 p-4 rounded-2xl border border-red-100 bg-red-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shadow-sm">
+        {/* ── ALERTA DE ERRORES DETALLADA ── */}
+        {errores.length > 0 && (
+          <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shadow-sm mt-0.5">
                 <span className="material-symbols-outlined text-white text-lg">priority_high</span>
               </div>
               <div className="flex-1">
-                <p className="text-red-900 text-sm font-bold">Atención requerida</p>
-                <p className="text-red-700 text-xs">{error}</p>
+                <p className="text-red-900 text-sm font-bold mb-2">
+                  Atención requerida — Falta{errores.length > 1 ? "n" : ""} {errores.length} campo{errores.length > 1 ? "s" : ""} por completar:
+                </p>
+                <ul className="space-y-1">
+                  {errores.map((e, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-red-700 text-xs">
+                      <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
+                      {e}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <button type="button" onClick={() => setError("")} className="text-red-400 hover:text-red-600 transition-colors">
+              <button type="button" onClick={() => setErrores([])} className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0">
                 <span className="material-symbols-outlined text-lg">close</span>
               </button>
+            </div>
           </div>
         )}
 

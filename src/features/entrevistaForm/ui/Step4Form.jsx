@@ -2,10 +2,23 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { saveInterviewAsPdf, printInterviewPdfFormat } from "../../pdfExport/lib/index";
 
-// ── Constantes de estilo (igual al paso 3) ─────────────────────────────────────
+// ── Constantes de estilo ───────────────────────────────────────────────────────
 const P     = "#51626f";
 const FOCUS = `focus:border-[#51626f] focus:ring-2 focus:ring-[#51626f]/10`;
 const INPUT = `w-full px-4 py-3 rounded-lg border border-slate-300 outline-none transition-all ${FOCUS}`;
+
+// ── Componente de label obligatorio ───────────────────────────────────────────
+const RequiredLabel = ({ children, className = "" }) => (
+  <label className={`block text-sm font-medium text-slate-700 mb-4 ${className}`}>
+    {children} <span className="text-red-500 ml-0.5">*</span>
+  </label>
+);
+
+const OptionalLabel = ({ children, className = "" }) => (
+  <label className={`block text-sm font-medium text-slate-700 mb-2 ${className}`}>
+    {children} <span className="text-slate-400 text-xs font-normal ml-1">(opcional)</span>
+  </label>
+);
 
 // ── FormWrapper ────────────────────────────────────────────────────────────────
 const FormWrapper = ({ children }) => (
@@ -83,9 +96,13 @@ const RadioCard = ({ name, value, label, selected, onToggle }) => {
 };
 
 // ── Select con flecha ──────────────────────────────────────────────────────────
-const StyledSelect = ({ name, defaultValue, children, className = "" }) => (
+const StyledSelect = ({ name, value, defaultValue, onChange, children, className = "" }) => (
   <div className="relative">
-    <select name={name} defaultValue={defaultValue}
+    <select
+      name={name}
+      value={value}
+      defaultValue={value === undefined ? defaultValue : undefined}
+      onChange={onChange}
       className={`appearance-none w-full px-4 py-3 pr-10 rounded-lg border border-slate-300 bg-white text-slate-700 outline-none cursor-pointer transition-all ${FOCUS} ${className}`}>
       {children}
     </select>
@@ -101,6 +118,21 @@ function readStorage() {
 const PAISES = ["Haití","Estados Unidos","Venezuela","España","Italia","Colombia","China","Cuba","Puerto Rico","Francia","Otro"];
 const TALLERES = ["INFO","GAT","CYP","EBA","MECA","AUTO","ELDAD","ELCA"];
 
+// Tipos de hermano/pariente actualizados
+// "hermano" → hermano(a)
+// "hermano exalumno" → hermano(a) exalumno(a)  [renombrado interno: mantener]
+// "exalumno" → pariente exalumno  [renombrado]
+// "pariente" → pariente  [NUEVO]
+const TIPOS_HERMANO = [
+  { value: "hermano",         label: "hermano(a)" },
+  { value: "hermano exalumno",label: "hermano(a) exalumno(a)" },
+  { value: "pariente exalumno", label: "pariente exalumno" },
+  { value: "pariente",        label: "pariente" },
+];
+
+// Tipos que muestran campo de parentesco
+const mostrarParentesco = (tipo) => tipo === "pariente exalumno" || tipo === "pariente";
+
 export default function Step4Form() {
   const navigate = useNavigate();
   const formRef  = useRef(null);
@@ -108,6 +140,7 @@ export default function Step4Form() {
   const modoLectura        = localStorage.getItem("entrevista_modo_lectura") === "true";
   const [showSuccess,      setShowSuccess]      = useState(false);
   const [showPrintConfirm, setShowPrintConfirm] = useState(false);
+  const [isSaving,         setIsSaving]         = useState(false);
 
   // ── Estados de toggles ────────────────────────────────────────────────────
   const makeToggle = (getter, setter) => (val) => {
@@ -121,8 +154,11 @@ export default function Step4Form() {
   const [supervisorOtro,      setSupervisorOtro]       = useState(saved.supervisor_otro           || "");
   const [padresFuera,         setPadresFuera]          = useState(saved.padres_fuera              || "");
   const [padresFueraDetalle,  setPadresFueraDetalle]   = useState(saved.padres_fuera_detalle      || "");
+
+  // ── País madre/padre como estado controlled para detectar "Otro" ──────────
   const [paisMadre,           setPaisMadre]            = useState(saved.pais_madre                || "");
   const [paisPadre,           setPaisPadre]            = useState(saved.pais_padre                || "");
+
   const [tipoCasa,            setTipoCasa]             = useState(saved.tipo_casa                 || "");
   const [estadoPadres,        setEstadoPadres]         = useState(saved.estado_padres             || "");
   const [convivePadres,       setConvivePadres]        = useState(saved.convive_padres            || "");
@@ -195,31 +231,46 @@ export default function Step4Form() {
     return errores;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     if (modoLectura) return;
     const errores = validar();
-    if (errores.length > 0) { setAlertas(errores); setTimeout(() => document.getElementById('alertas-validacion')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); return; }
+    if (errores.length > 0) {
+      setAlertas(errores);
+      setTimeout(() => document.getElementById('alertas-validacion')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+      return;
+    }
     setAlertas([]);
+    setIsSaving(true);
+    // Simular proceso de guardado (mínimo 1.5s para mostrar animación)
+    await new Promise(resolve => setTimeout(resolve, 1500));
     saveFormData(e?.target);
+    setIsSaving(false);
     setShowSuccess(true);
   };
+
   const handleSavePdf = () => { const d = saveFormData(formRef.current); saveInterviewAsPdf(d); };
   const handlePrint   = () => setShowPrintConfirm(true);
   const confirmPrint  = () => { setShowPrintConfirm(false); const d = saveFormData(formRef.current); printInterviewPdfFormat(d); };
   const closeSuccess  = () => { setShowSuccess(false); navigate("/"); };
-
-  // Helper: ¿el tipo requiere mostrar campo de parentesco?
-  const mostrarParentesco = (tipo) => tipo === "exalumno";
 
   return (
     <FormWrapper>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined');
         @keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes scaleIn { from { opacity:0; transform:scale(.7); } to { opacity:1; transform:scale(1); } }
+        @keyframes checkDraw {
+          from { stroke-dashoffset: 50; }
+          to   { stroke-dashoffset: 0; }
+        }
+        @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
         select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
           background-position: right .75rem center; background-repeat: no-repeat; background-size: 1.25em; padding-right: 2.5rem !important; }
         select:focus { outline: none; border-color: #51626f; box-shadow: 0 0 0 2px rgba(81,98,111,.15); }
+        .check-circle { animation: scaleIn .4s cubic-bezier(.34,1.56,.64,1) forwards; }
+        .check-path { stroke-dasharray: 50; stroke-dashoffset: 50; animation: checkDraw .4s ease .35s forwards; }
+        .spinner { animation: spin .8s linear infinite; }
       `}</style>
 
       {/* Header */}
@@ -235,7 +286,6 @@ export default function Step4Form() {
             </div>
           </div>
         )}
-
       </div>
 
       <form ref={formRef} onSubmit={handleSubmit} className="p-8 pt-0 space-y-10">
@@ -250,7 +300,7 @@ export default function Step4Form() {
 
               {/* 20 — Condición de salud */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">20. ¿Padece su hijo de alguna condición de salud física o mental? ¿Requiere tratamiento?</label>
+                <RequiredLabel>20. ¿Padece su hijo de alguna condición de salud física o mental? ¿Requiere tratamiento?</RequiredLabel>
                 <div className="flex gap-3">
                   {[["Si","Sí"],["No","No"]].map(([val,lbl]) => (
                     <RadioCard key={val} name="condicion_salud" value={val} label={lbl}
@@ -265,7 +315,7 @@ export default function Step4Form() {
 
               {/* 21 — Medicamento */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">21. ¿Toma su hijo(a) algún medicamento fijo o regularmente?</label>
+                <RequiredLabel>21. ¿Toma su hijo(a) algún medicamento fijo o regularmente?</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {[["Si","Sí"],["No","No"],["Tal vez","Tal vez"]].map(([val,lbl]) => (
                     <RadioCard key={val} name="medicamento" value={val} label={lbl}
@@ -280,7 +330,7 @@ export default function Step4Form() {
 
               {/* 22 — Supervisor extraescolar */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">22. ¿Quién supervisa al estudiante durante actividades extraescolares?</label>
+                <RequiredLabel>22. ¿Quién supervisa al estudiante durante actividades extraescolares?</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Madre","Padre","Tutor legal","Madrastra","Padrastro","Otro"].map(val => (
                     <RadioCard key={val} name="supervisor_extraescolar" value={val} label={val}
@@ -298,7 +348,7 @@ export default function Step4Form() {
 
               {/* 23 — Padres fuera del país */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">23. ¿Alguno de los padres reside fuera del país?</label>
+                <RequiredLabel>23. ¿Alguno de los padres reside fuera del país?</RequiredLabel>
                 <div className="flex gap-3">
                   {[["Si","Sí"],["No","No"]].map(([val,lbl]) => (
                     <RadioCard key={val} name="padres_fuera" value={val} label={lbl}
@@ -319,14 +369,18 @@ export default function Step4Form() {
                       </div>
                     </div>
 
-                    {/* País según selección */}
+                    {/* País madre — controlled */}
                     {(padresFueraDetalle === "Madre" || padresFueraDetalle === "Ambos") && (
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">
-                          País de residencia — {padresFueraDetalle === "Ambos" ? "Madre" : "Madre"}
+                          País de residencia — Madre
                         </label>
                         <div className="max-w-md space-y-3">
-                          <StyledSelect name="pais_madre" defaultValue={saved.pais_madre || ""}>
+                          <StyledSelect
+                            name="pais_madre"
+                            value={paisMadre}
+                            onChange={e => setPaisMadre(e.target.value)}
+                          >
                             <option value="">Seleccione país...</option>
                             {PAISES.filter(p => p !== "Otro").map(p => <option key={p} value={p}>{p}</option>)}
                             <option value="Otro">Otro</option>
@@ -336,20 +390,21 @@ export default function Step4Form() {
                               placeholder="Escriba el país..." className={INPUT} />
                           )}
                         </div>
-                        {/* hack para capturar cambio en el select sin controlled */}
-                        <select className="hidden" onChange={e => setPaisMadre(e.target.value)} defaultValue={saved.pais_madre || ""}>
-                          {PAISES.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
                       </div>
                     )}
 
+                    {/* País padre — controlled */}
                     {(padresFueraDetalle === "Padre" || padresFueraDetalle === "Ambos") && (
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">
                           País de residencia — Padre
                         </label>
                         <div className="max-w-md space-y-3">
-                          <StyledSelect name="pais_padre" defaultValue={saved.pais_padre || ""}>
+                          <StyledSelect
+                            name="pais_padre"
+                            value={paisPadre}
+                            onChange={e => setPaisPadre(e.target.value)}
+                          >
                             <option value="">Seleccione país...</option>
                             {PAISES.filter(p => p !== "Otro").map(p => <option key={p} value={p}>{p}</option>)}
                             <option value="Otro">Otro</option>
@@ -359,14 +414,11 @@ export default function Step4Form() {
                               placeholder="Escriba el país..." className={INPUT} />
                           )}
                         </div>
-                        <select className="hidden" onChange={e => setPaisPadre(e.target.value)} defaultValue={saved.pais_padre || ""}>
-                          {PAISES.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
                       </div>
                     )}
 
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Observaciones adicionales</label>
+                      <OptionalLabel>Observaciones adicionales</OptionalLabel>
                       <textarea name="observaciones_padres_fuera" defaultValue={saved.observaciones_padres_fuera || ""}
                         placeholder="Detalles sobre la situación, tiempo fuera, visitas, etc..." className={INPUT} rows={3} />
                     </div>
@@ -374,9 +426,9 @@ export default function Step4Form() {
                 )}
               </div>
 
-              {/* 24 — Tipo de casa (sin sub-opciones al marcar Otros) */}
+              {/* 24 — Tipo de casa */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">24. La casa en que viven es:</label>
+                <RequiredLabel>24. La casa en que viven es:</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Propia","Rentada","Prestada","Otros"].map(val => (
                     <RadioCard key={val} name="tipo_casa" value={val} label={val}
@@ -387,7 +439,7 @@ export default function Step4Form() {
 
               {/* 25 — Estado de vida de los padres */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">25. Estado de vida de los padres:</label>
+                <RequiredLabel>25. Estado de vida de los padres:</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Ambos viven","Solo vive la madre","Solo vive el padre","Ninguno vive"].map(val => (
                     <RadioCard key={val} name="estado_padres" value={val} label={val}
@@ -398,7 +450,7 @@ export default function Step4Form() {
 
               {/* 26 — ¿Con quién convive? */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">26. ¿Con quién convive el estudiante?</label>
+                <RequiredLabel>26. ¿Con quién convive el estudiante?</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Con ambos","Solo con la madre","Solo con el padre","No convive con ninguno"].map(val => (
                     <RadioCard key={val} name="convive_padres" value={val} label={val}
@@ -409,7 +461,7 @@ export default function Step4Form() {
 
               {/* 27 — Figuras familiares */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">27. ¿Existe alguna de las siguientes figuras en el núcleo familiar?</label>
+                <RequiredLabel>27. ¿Existe alguna de las siguientes figuras en el núcleo familiar?</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Madrastra","Padrastro","Ambos","Ninguno"].map(val => (
                     <RadioCard key={val} name="figuras_familiares" value={val} label={val}
@@ -420,7 +472,7 @@ export default function Step4Form() {
 
               {/* 28 — Hermanos / exalumnos en IPISA */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-4">28. ¿Tiene algún hermano(a) o exalumno en IPISA?</label>
+                <RequiredLabel>28. ¿Tiene algún hermano(a) o exalumno en IPISA?</RequiredLabel>
                 <div className="flex gap-3 mb-5">
                   <RadioCard name="hermanos_exalumnos_si_no" value="Si" label="Sí"
                     selected={mostrarHermanos ? "Si" : ""}
@@ -444,11 +496,11 @@ export default function Step4Form() {
                           )}
                         </div>
 
-                        {/* ── Tipo: hermano | hermano exalumno | exalumno ── */}
+                        {/* ── Tipo ── */}
                         <div className="mb-4">
                           <label className="block text-sm font-medium text-slate-700 mb-3">Tipo</label>
                           <div className="flex flex-wrap gap-3">
-                            {[["hermano","hermano(a)"], ["hermano exalumno","hermano(a) exalumno(a)"], ["exalumno","exalumno(a)"]].map(([t, lbl]) => (
+                            {TIPOS_HERMANO.map(({ value: t, label: lbl }) => (
                               <div key={t} onClick={() => updateHermano(index, "tipo", h.tipo === t ? "" : t)}
                                 className="flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all select-none"
                                 style={{
@@ -481,23 +533,27 @@ export default function Step4Form() {
                           {/* Taller */}
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Taller</label>
-                            <StyledSelect name={`hermanos[${index}].taller`} defaultValue={h.taller}>
+                            <StyledSelect
+                              name={`hermanos[${index}].taller`}
+                              value={h.taller}
+                              onChange={e => updateHermano(index, "taller", e.target.value)}
+                            >
                               <option value="">Seleccione taller</option>
                               {TALLERES.map(t => <option key={t} value={t}>{t}</option>)}
                             </StyledSelect>
                           </div>
 
-                          {/* Parentesco — solo para exalumno / hermano exalumno */}
+                          {/* Parentesco — para "pariente exalumno" y "pariente" */}
                           {mostrarParentesco(h.tipo) && (
                             <div>
                               <label className="block text-sm font-medium text-slate-700 mb-1.5">Parentesco con el estudiante</label>
                               <input type="text" name={`hermanos[${index}].otro_especifico`} value={h.otro_especifico || ""}
                                 onChange={e => updateHermano(index, "otro_especifico", e.target.value)}
-                                placeholder="Ej: primo, tío exalumno..." className={INPUT} />
+                                placeholder="Ej: primo, tío, vecino..." className={INPUT} />
                             </div>
                           )}
 
-                          {/* Año de graduación — en la misma fila que parentesco cuando este aparece */}
+                          {/* Año de graduación */}
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Año de graduación (si aplica)</label>
                             <input name={`hermanos[${index}].anio`} type="number" value={h.anio}
@@ -520,15 +576,17 @@ export default function Step4Form() {
 
               {/* 29 — Valoración de la familia */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">29. Valoración de la familia</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  29. Valoración de la familia <span className="text-red-500 ml-0.5">*</span>
+                </label>
                 <div className="max-w-xl">
-                <StyledSelect name="valoracion_familia" defaultValue={saved.valoracion_familia || ""}>
-                  <option value="">Seleccione</option>
-                  <option value="100">100 – Familias muy necesitadas, viven en situación de pobreza</option>
-                  <option value="75">75 – Familias necesitadas pero estables, trabaja solo uno de los padres</option>
-                  <option value="50">50 – Familias estables, ambos padres trabajan, son profesionales</option>
-                  <option value="25">25 – Familias estables económicamente, ingresos superior a $100,000</option>
-                </StyledSelect>
+                  <StyledSelect name="valoracion_familia" value={saved.valoracion_familia || ""} onChange={() => {}}>
+                    <option value="">Seleccione</option>
+                    <option value="100">100 – Familias muy necesitadas, viven en situación de pobreza</option>
+                    <option value="75">75 – Familias necesitadas pero estables, trabaja solo uno de los padres</option>
+                    <option value="50">50 – Familias estables, ambos padres trabajan, son profesionales</option>
+                    <option value="25">25 – Familias estables económicamente, ingresos superior a $100,000</option>
+                  </StyledSelect>
                 </div>
                 <p className="mt-2 text-xs text-slate-500">El 100 se le da prioridad y el 25 menos prioridad</p>
               </div>
@@ -537,7 +595,7 @@ export default function Step4Form() {
               <div className="pt-6 border-t border-slate-200">
                 <div className="flex items-center gap-3 mb-3">
                   <span className="material-symbols-outlined text-xl" style={{ color: P }}>lock</span>
-                  <label className="block text-sm font-semibold text-slate-700">Observaciones internas</label>
+                  <OptionalLabel className="!mb-0">Observaciones internas</OptionalLabel>
                 </div>
                 <textarea name="observaciones_internas" defaultValue={saved.observaciones_internas || ""}
                   placeholder="Notas internas del entrevistador (no aparecen en el PDF)..."
@@ -601,27 +659,54 @@ export default function Step4Form() {
               <span className="material-symbols-outlined text-base">picture_as_pdf</span> Guardar PDF
             </button>
             {!modoLectura && (
-              <button type="submit"
-                className="px-10 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center gap-2"
-                style={{ background: P, boxShadow: "0 4px 14px rgba(81,98,111,.4)" }}>
-                Guardar y Finalizar <span className="material-symbols-outlined text-base">check_circle</span>
+              <button type="submit" disabled={isSaving}
+                className="px-10 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center gap-2 min-w-[200px] justify-center"
+                style={{
+                  background: isSaving ? "#7a909c" : P,
+                  boxShadow: isSaving ? "none" : "0 4px 14px rgba(81,98,111,.4)",
+                  cursor: isSaving ? "not-allowed" : "pointer",
+                }}>
+                {isSaving ? (
+                  <>
+                    <svg className="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.3)" strokeWidth="3" />
+                      <path d="M12 2 a10 10 0 0 1 10 10" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    Guardar y Finalizar <span className="material-symbols-outlined text-base">check_circle</span>
+                  </>
+                )}
               </button>
             )}
           </div>
         </div>
       </form>
 
-      {/* Modal éxito */}
+      {/* Modal éxito con animación de check */}
       {showSuccess && (
-        <div className="fixed inset-0 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm z-50">
-          <div className="bg-white p-7 rounded-2xl shadow-2xl max-w-sm w-full text-center border border-slate-200">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+        <div className="fixed inset-0 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm z-50"
+          style={{ animation: "fadeIn .2s ease" }}>
+          <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center border border-slate-200"
+            style={{ animation: "scaleIn .35s cubic-bezier(.34,1.56,.64,1)" }}>
+            {/* Ícono de check animado */}
+            <div className="check-circle w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5"
               style={{ background: "rgba(81,98,111,.1)" }}>
-              <span className="material-symbols-outlined text-3xl" style={{ color: P }}>check_circle</span>
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+                <circle cx="22" cy="22" r="20" stroke="#51626f" strokeWidth="2.5" opacity="0.3" />
+                <path className="check-path" d="M12 22 L19 29 L32 15" stroke="#51626f" strokeWidth="3"
+                  strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              </svg>
             </div>
-            <h3 className="text-xl font-semibold text-slate-800 mb-5">Entrevista guardada exitosamente</h3>
-            <button onClick={closeSuccess} className="text-white px-8 py-3 rounded-xl font-bold hover:opacity-90 transition-all"
-              style={{ background: P }}>OK</button>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">¡Entrevista guardada!</h3>
+            <p className="text-sm text-slate-500 mb-6">La entrevista fue guardada exitosamente.</p>
+            <button onClick={closeSuccess}
+              className="text-white px-10 py-3 rounded-xl font-bold hover:opacity-90 transition-all w-full"
+              style={{ background: P }}>
+              OK
+            </button>
           </div>
         </div>
       )}
