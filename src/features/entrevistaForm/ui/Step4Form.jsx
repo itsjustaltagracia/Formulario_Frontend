@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { saveInterviewAsPdf, printInterviewPdfFormat } from "../../pdfExport/lib/index";
 
@@ -7,13 +7,12 @@ const P     = "#51626f";
 const FOCUS = `focus:border-[#51626f] focus:ring-2 focus:ring-[#51626f]/10`;
 const INPUT = `w-full px-4 py-3 rounded-lg border border-slate-300 outline-none transition-all ${FOCUS}`;
 
-// ── Componente de label obligatorio ───────────────────────────────────────────
+// ── Labels ─────────────────────────────────────────────────────────────────────
 const RequiredLabel = ({ children, className = "" }) => (
   <label className={`block text-sm font-medium text-slate-700 mb-4 ${className}`}>
     {children} <span className="text-red-500 ml-0.5">*</span>
   </label>
 );
-
 const OptionalLabel = ({ children, className = "" }) => (
   <label className={`block text-sm font-medium text-slate-700 mb-2 ${className}`}>
     {children} <span className="text-slate-400 text-xs font-normal ml-1">(opcional)</span>
@@ -49,8 +48,7 @@ const Stepper = ({ pasoActual }) => {
                 style={{
                   background: completado ? "#22c55e" : activo ? P : "#e2e8f0",
                   color:      completado || activo ? "white" : "#94a3b8",
-                  boxShadow:  activo     ? `0 4px 14px rgba(81,98,111,.35)`
-                            : completado ? "0 4px 14px rgba(34,197,94,.35)" : "none",
+                  boxShadow:  activo ? `0 4px 14px rgba(81,98,111,.35)` : completado ? "0 4px 14px rgba(34,197,94,.35)" : "none",
                 }}>
                 {completado ? "✓" : s.n}
               </div>
@@ -60,8 +58,7 @@ const Stepper = ({ pasoActual }) => {
               </span>
             </div>
             {i < arr.length - 1 && (
-              <div className="h-1 flex-grow rounded-full"
-                style={{ background: completado ? "#22c55e" : "#e2e8f0" }} />
+              <div className="h-1 flex-grow rounded-full" style={{ background: completado ? "#22c55e" : "#e2e8f0" }} />
             )}
           </div>
         );
@@ -70,7 +67,7 @@ const Stepper = ({ pasoActual }) => {
   );
 };
 
-// ── RadioCard con toggle ───────────────────────────────────────────────────────
+// ── RadioCard ──────────────────────────────────────────────────────────────────
 const RadioCard = ({ name, value, label, selected, onToggle }) => {
   const sel = selected === value;
   return (
@@ -95,14 +92,10 @@ const RadioCard = ({ name, value, label, selected, onToggle }) => {
   );
 };
 
-// ── Select con flecha ──────────────────────────────────────────────────────────
-const StyledSelect = ({ name, value, defaultValue, onChange, children, className = "" }) => (
+// ── StyledSelect ──────────────────────────────────────────────────────────────
+const StyledSelect = ({ name, value, onChange, children, className = "" }) => (
   <div className="relative">
-    <select
-      name={name}
-      value={value}
-      defaultValue={value === undefined ? defaultValue : undefined}
-      onChange={onChange}
+    <select name={name} value={value} onChange={onChange}
       className={`appearance-none w-full px-4 py-3 pr-10 rounded-lg border border-slate-300 bg-white text-slate-700 outline-none cursor-pointer transition-all ${FOCUS} ${className}`}>
       {children}
     </select>
@@ -110,167 +103,173 @@ const StyledSelect = ({ name, value, defaultValue, onChange, children, className
   </div>
 );
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
 function readStorage() {
   try { const r = window.localStorage.getItem("entrevista"); return r ? JSON.parse(r) : {}; }
   catch { window.localStorage.removeItem("entrevista"); return {}; }
 }
 
-const PAISES = ["Haití","Estados Unidos","Venezuela","España","Italia","Colombia","China","Cuba","Puerto Rico","Francia","Otro"];
+const PAISES   = ["Haití","Estados Unidos","Venezuela","España","Italia","Colombia","China","Cuba","Puerto Rico","Francia","Otro"];
 const TALLERES = ["INFO","GAT","CYP","EBA","MECA","AUTO","ELDAD","ELCA"];
-
-// Tipos de hermano/pariente actualizados
-// "hermano" → hermano(a)
-// "hermano exalumno" → hermano(a) exalumno(a)  [renombrado interno: mantener]
-// "exalumno" → pariente exalumno  [renombrado]
-// "pariente" → pariente  [NUEVO]
 const TIPOS_HERMANO = [
-  { value: "hermano",         label: "hermano(a)" },
-  { value: "hermano exalumno",label: "hermano(a) exalumno(a)" },
+  { value: "hermano",           label: "hermano(a)" },
+  { value: "hermano exalumno",  label: "hermano(a) exalumno(a)" },
   { value: "pariente exalumno", label: "pariente exalumno" },
-  { value: "pariente",        label: "pariente" },
+  { value: "pariente",          label: "pariente" },
 ];
-
-// Tipos que muestran campo de parentesco
 const mostrarParentesco = (tipo) => tipo === "pariente exalumno" || tipo === "pariente";
 
+// ══════════════════════════════════════════════════════════════════════════════
 export default function Step4Form() {
-  const navigate = useNavigate();
-  const formRef  = useRef(null);
-  const [saved, setSaved]  = useState(readStorage);
-  const modoLectura        = localStorage.getItem("entrevista_modo_lectura") === "true";
+  const navigate    = useNavigate();
+  const formRef     = useRef(null);
+  const modoLectura = localStorage.getItem("entrevista_modo_lectura") === "true";
+
   const [showSuccess,      setShowSuccess]      = useState(false);
   const [showPrintConfirm, setShowPrintConfirm] = useState(false);
   const [isSaving,         setIsSaving]         = useState(false);
+  const [alertas,          setAlertas]          = useState([]);
 
-  // ── Estados de toggles ────────────────────────────────────────────────────
-  const makeToggle = (getter, setter) => (val) => {
+  // ── Leer storage una sola vez al montar ───────────────────────────────────
+  const s = readStorage();
+
+  // ── TODOS los campos como estado controlado ───────────────────────────────
+  const [condicionSalud,        setCondicionSalud]        = useState(s.condicion_salud            || "");
+  const [condicionSaludDetalle, setCondicionSaludDetalle] = useState(s.condicion_salud_detalle    || "");
+  const [medicamento,           setMedicamento]           = useState(s.medicamento                || "");
+  const [medicamentoDetalle,    setMedicamentoDetalle]    = useState(s.medicamento_detalle        || "");
+  const [supervisorExtra,       setSupervisorExtra]       = useState(s.supervisor_extraescolar    || "");
+  const [supervisorOtroEsp,     setSupervisorOtroEsp]     = useState(s.supervisor_otro_especifico || "");
+  const [padresFuera,           setPadresFuera]           = useState(s.padres_fuera               || "");
+  const [padresFueraDetalle,    setPadresFueraDetalle]    = useState(s.padres_fuera_detalle       || "");
+  const [paisMadre,             setPaisMadre]             = useState(s.pais_madre                 || "");
+  const [paisMadreOtro,         setPaisMadreOtro]         = useState(s.pais_madre_otro            || "");
+  const [paisPadre,             setPaisPadre]             = useState(s.pais_padre                 || "");
+  const [paisPadreOtro,         setPaisPadreOtro]         = useState(s.pais_padre_otro            || "");
+  const [obsPadresFuera,        setObsPadresFuera]        = useState(s.observaciones_padres_fuera || "");
+  const [tipoCasa,              setTipoCasa]              = useState(s.tipo_casa                  || "");
+  const [estadoPadres,          setEstadoPadres]          = useState(s.estado_padres              || "");
+  const [convivePadres,         setConvivePadres]         = useState(s.convive_padres             || "");
+  const [figurasFamiliares,     setFigurasFamiliares]     = useState(s.figuras_familiares         || "");
+  const [mostrarHermanos,       setMostrarHermanos]       = useState(s.hermanos_exalumnos_si_no === "Si" || (s.hermanos?.length > 0));
+  const [hermanosNo,            setHermanosNo]            = useState(s.hermanos_exalumnos_si_no === "No");
+  const [valoracion,            setValoracion]            = useState(s.valoracion_familia         || "");
+  const [obsInternas,           setObsInternas]           = useState(s.observaciones_internas     || "");
+
+  // ── Hermanos ──────────────────────────────────────────────────────────────
+  const initHermanos = s.hermanos?.length > 0
+    ? s.hermanos
+    : s.hermanos_nombre
+      ? [{ nombre: s.hermanos_nombre, anio: s.hermanos_anio, taller: s.hermanos_taller, tipo: "hermano", otro_especifico: "" }]
+      : [];
+  const [hermanos, setHermanos] = useState(initHermanos);
+
+  const addHermano    = () => setHermanos(h => [...h, { nombre: "", anio: "", taller: "", tipo: "hermano", otro_especifico: "" }]);
+  const removeHermano = (i) => setHermanos(h => h.filter((_, j) => j !== i));
+  const updateHermano = (i, field, val) => setHermanos(h => { const a = [...h]; a[i] = { ...a[i], [field]: val }; return a; });
+
+  // ── Toggle helper ─────────────────────────────────────────────────────────
+  const toggle = (val, getter, setter) => {
     if (modoLectura) return;
     setter(getter === val ? "" : val);
   };
 
-  const [condicionSalud,      setCondicionSalud]      = useState(saved.condicion_salud           || "");
-  const [medicamento,         setMedicamento]          = useState(saved.medicamento               || "");
-  const [supervisorExtra,     setSupervisorExtra]      = useState(saved.supervisor_extraescolar   || "");
-  const [supervisorOtro,      setSupervisorOtro]       = useState(saved.supervisor_otro           || "");
-  const [padresFuera,         setPadresFuera]          = useState(saved.padres_fuera              || "");
-  const [padresFueraDetalle,  setPadresFueraDetalle]   = useState(saved.padres_fuera_detalle      || "");
-
-  // ── País madre/padre como estado controlled para detectar "Otro" ──────────
-  const [paisMadre,           setPaisMadre]            = useState(saved.pais_madre                || "");
-  const [paisPadre,           setPaisPadre]            = useState(saved.pais_padre                || "");
-
-  const [tipoCasa,            setTipoCasa]             = useState(saved.tipo_casa                 || "");
-  const [estadoPadres,        setEstadoPadres]         = useState(saved.estado_padres             || "");
-  const [convivePadres,       setConvivePadres]        = useState(saved.convive_padres            || "");
-  const [figurasFamiliares,   setFigurasFamiliares]    = useState(saved.figuras_familiares        || "");
-  const [mostrarHermanos,     setMostrarHermanos]      = useState(saved.hermanos_exalumnos_si_no === "Si" || (saved.hermanos?.length > 0));
-
-  // ── Hermanos ──────────────────────────────────────────────────────────────
-  let initHermanos = [];
-  if (saved.hermanos?.length > 0) initHermanos = saved.hermanos;
-  else if (saved.hermanos_nombre)  initHermanos = [{ nombre: saved.hermanos_nombre, anio: saved.hermanos_anio, taller: saved.hermanos_taller, tipo: "hermano", otro_especifico: "" }];
-  const [hermanos, setHermanos] = useState(initHermanos);
-
-  const addHermano    = () => setHermanos([...hermanos, { nombre: "", anio: "", taller: "", tipo: "hermano", otro_especifico: "" }]);
-  const removeHermano = (i) => { if (hermanos.length > 1) setHermanos(hermanos.filter((_, j) => j !== i)); };
-  const updateHermano = (i, field, val) => {
-    const arr = [...hermanos]; arr[i] = { ...arr[i], [field]: val }; setHermanos(arr);
-  };
-
-  // ── Guardar ───────────────────────────────────────────────────────────────
-  const saveFormData = (target) => {
-    const src = target ?? formRef.current;
-    if (!src) return saved;
-    const form   = new FormData(src);
-    const values = Object.fromEntries(form.entries());
-    const data   = {
-      ...saved, ...values,
-      condicion_salud:        condicionSalud,
+  // ── AUTO-GUARDADO ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (modoLectura) return;
+    const existing = readStorage();
+    const data = {
+      ...existing,
+      condicion_salud:            condicionSalud,
+      condicion_salud_detalle:    condicionSalud === "Si" ? condicionSaludDetalle : "",
       medicamento,
-      supervisor_extraescolar: supervisorExtra,
-      supervisor_otro:         supervisorOtro,
-      padres_fuera:            padresFuera,
-      padres_fuera_detalle:    padresFueraDetalle,
-      pais_madre:              paisMadre,
-      pais_padre:              paisPadre,
-      tipo_casa:               tipoCasa,
-      estado_padres:           estadoPadres,
-      convive_padres:          convivePadres,
-      figuras_familiares:      figurasFamiliares,
-      hermanos,
+      medicamento_detalle:        (medicamento === "Si" || medicamento === "Tal vez") ? medicamentoDetalle : "",
+      supervisor_extraescolar:    supervisorExtra,
+      supervisor_otro_especifico: supervisorExtra === "Otro" ? supervisorOtroEsp : "",
+      padres_fuera:               padresFuera,
+      padres_fuera_detalle:       padresFuera === "Si" ? padresFueraDetalle : "",
+      pais_madre:                 padresFuera === "Si" ? paisMadre : "",
+      pais_madre_otro:            paisMadre === "Otro" ? paisMadreOtro : "",
+      pais_padre:                 padresFuera === "Si" ? paisPadre : "",
+      pais_padre_otro:            paisPadre === "Otro" ? paisPadreOtro : "",
+      observaciones_padres_fuera: padresFuera === "Si" ? obsPadresFuera : "",
+      tipo_casa:                  tipoCasa,
+      estado_padres:              estadoPadres,
+      convive_padres:             convivePadres,
+      figuras_familiares:         figurasFamiliares,
+      hermanos_exalumnos_si_no:   mostrarHermanos ? "Si" : hermanosNo ? "No" : "",
+      hermanos:                   mostrarHermanos ? hermanos : [],
+      valoracion_familia:         valoracion,
+      observaciones_internas:     obsInternas,
     };
-    if (condicionSalud !== "Si") data.condicion_salud_detalle = "";
-    if (medicamento !== "Si" && medicamento !== "Tal vez") data.medicamento_detalle = "";
-    if (padresFuera !== "Si") { data.padres_fuera_detalle = ""; data.pais_madre = ""; data.pais_padre = ""; }
-    if (!mostrarHermanos) data.hermanos = [];
     localStorage.setItem("entrevista", JSON.stringify(data));
-    setSaved(data);
-    return data;
-  };
+  }, [
+    condicionSalud, condicionSaludDetalle, medicamento, medicamentoDetalle,
+    supervisorExtra, supervisorOtroEsp, padresFuera, padresFueraDetalle,
+    paisMadre, paisMadreOtro, paisPadre, paisPadreOtro, obsPadresFuera,
+    tipoCasa, estadoPadres, convivePadres, figurasFamiliares,
+    mostrarHermanos, hermanosNo, hermanos, valoracion, obsInternas,
+  ]);
 
-  // ── Validación ───────────────────────────────────────────────────────────
-  const [alertas, setAlertas] = useState([]);
-
+  // ── Validación ────────────────────────────────────────────────────────────
   const validar = () => {
     const errores = [];
-    if (!condicionSalud)    errores.push("Pregunta 20: Condición de salud del hijo");
-    if (!medicamento)       errores.push("Pregunta 21: Medicamento fijo o regular");
-    if (!supervisorExtra)   errores.push("Pregunta 22: Supervisor extraescolar");
-    if (!padresFuera)       errores.push("Pregunta 23: Padres fuera del país");
-    if (!tipoCasa)          errores.push("Pregunta 24: Tipo de vivienda");
-    if (!estadoPadres)      errores.push("Pregunta 25: Estado de vida de los padres");
-    if (!convivePadres)     errores.push("Pregunta 26: Con quién convive el estudiante");
-    if (!figurasFamiliares) errores.push("Pregunta 27: Figuras familiares en el núcleo");
-    if (saved.hermanos_exalumnos_si_no !== "Si" && !mostrarHermanos && saved.hermanos_exalumnos_si_no !== "No")
-      errores.push("Pregunta 28: Hermanos o exalumnos en IPISA");
-    const form = formRef.current;
-    if (form) {
-      const valoracion = new FormData(form).get("valoracion_familia");
-      if (!valoracion) errores.push("Pregunta 29: Valoración de la familia");
-    }
+    if (!condicionSalud)              errores.push("Pregunta 20: Condición de salud del hijo");
+    if (!medicamento)                 errores.push("Pregunta 21: Medicamento fijo o regular");
+    if (!supervisorExtra)             errores.push("Pregunta 22: Supervisor extraescolar");
+    if (!padresFuera)                 errores.push("Pregunta 23: Padres fuera del país");
+    if (!tipoCasa)                    errores.push("Pregunta 24: Tipo de vivienda");
+    if (!estadoPadres)                errores.push("Pregunta 25: Estado de vida de los padres");
+    if (!convivePadres)               errores.push("Pregunta 26: Con quién convive el estudiante");
+    if (!figurasFamiliares)           errores.push("Pregunta 27: Figuras familiares en el núcleo");
+    if (!mostrarHermanos && !hermanosNo) errores.push("Pregunta 28: Hermanos o exalumnos en IPISA");
+    if (!valoracion)                  errores.push("Pregunta 29: Valoración de la familia");
     return errores;
   };
 
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     if (modoLectura) return;
     const errores = validar();
     if (errores.length > 0) {
       setAlertas(errores);
-      setTimeout(() => document.getElementById('alertas-validacion')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+      setTimeout(() => document.getElementById("alertas-validacion")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
       return;
     }
     setAlertas([]);
     setIsSaving(true);
-    // Simular proceso de guardado (mínimo 1.5s para mostrar animación)
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    saveFormData(e?.target);
+    await new Promise(r => setTimeout(r, 1500));
     setIsSaving(false);
     setShowSuccess(true);
   };
 
-  const handleSavePdf = () => { const d = saveFormData(formRef.current); saveInterviewAsPdf(d); };
-  const handlePrint   = () => setShowPrintConfirm(true);
-  const confirmPrint  = () => { setShowPrintConfirm(false); const d = saveFormData(formRef.current); printInterviewPdfFormat(d); };
-  const closeSuccess  = () => { setShowSuccess(false); navigate("/"); };
+  const getCurrentData = () => JSON.parse(localStorage.getItem("entrevista") || "{}");
+  const handleSavePdf  = () => saveInterviewAsPdf(getCurrentData());
+  const handlePrint    = () => setShowPrintConfirm(true);
+  const confirmPrint   = () => { setShowPrintConfirm(false); printInterviewPdfFormat(getCurrentData()); };
 
+  // ── Al dar OK: limpiar storage y volver al inicio con form vacío ──────────
+  const closeSuccess = () => {
+    setShowSuccess(false);
+    localStorage.removeItem("entrevista");
+    localStorage.removeItem("entrevista_modo_lectura");
+    navigate("/");
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <FormWrapper>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined');
-        @keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeIn  { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
         @keyframes scaleIn { from { opacity:0; transform:scale(.7); } to { opacity:1; transform:scale(1); } }
-        @keyframes checkDraw {
-          from { stroke-dashoffset: 50; }
-          to   { stroke-dashoffset: 0; }
-        }
+        @keyframes checkDraw { from { stroke-dashoffset:50; } to { stroke-dashoffset:0; } }
         @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
-        select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
-          background-position: right .75rem center; background-repeat: no-repeat; background-size: 1.25em; padding-right: 2.5rem !important; }
-        select:focus { outline: none; border-color: #51626f; box-shadow: 0 0 0 2px rgba(81,98,111,.15); }
+        select:focus { outline:none; border-color:#51626f; box-shadow:0 0 0 2px rgba(81,98,111,.15); }
         .check-circle { animation: scaleIn .4s cubic-bezier(.34,1.56,.64,1) forwards; }
-        .check-path { stroke-dasharray: 50; stroke-dashoffset: 50; animation: checkDraw .4s ease .35s forwards; }
-        .spinner { animation: spin .8s linear infinite; }
+        .check-path   { stroke-dasharray:50; stroke-dashoffset:50; animation: checkDraw .4s ease .35s forwards; }
+        .spinner      { animation: spin .8s linear infinite; }
       `}</style>
 
       {/* Header */}
@@ -298,188 +297,173 @@ export default function Step4Form() {
 
             <div className="space-y-8">
 
-              {/* 20 — Condición de salud */}
+              {/* 20 */}
               <div>
                 <RequiredLabel>20. ¿Padece su hijo de alguna condición de salud física o mental? ¿Requiere tratamiento?</RequiredLabel>
                 <div className="flex gap-3">
                   {[["Si","Sí"],["No","No"]].map(([val,lbl]) => (
                     <RadioCard key={val} name="condicion_salud" value={val} label={lbl}
-                      selected={condicionSalud} onToggle={() => makeToggle(condicionSalud, setCondicionSalud)(val)} />
+                      selected={condicionSalud} onToggle={() => toggle(val, condicionSalud, setCondicionSalud)} />
                   ))}
                 </div>
                 {condicionSalud === "Si" && (
-                  <textarea name="condicion_salud_detalle" defaultValue={saved.condicion_salud_detalle || ""}
+                  <textarea value={condicionSaludDetalle} onChange={e => setCondicionSaludDetalle(e.target.value)}
                     placeholder="Explique la condición y tratamiento..." className={`mt-4 ${INPUT}`} rows={3} />
                 )}
               </div>
 
-              {/* 21 — Medicamento */}
+              {/* 21 */}
               <div>
                 <RequiredLabel>21. ¿Toma su hijo(a) algún medicamento fijo o regularmente?</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {[["Si","Sí"],["No","No"],["Tal vez","Tal vez"]].map(([val,lbl]) => (
                     <RadioCard key={val} name="medicamento" value={val} label={lbl}
-                      selected={medicamento} onToggle={() => makeToggle(medicamento, setMedicamento)(val)} />
+                      selected={medicamento} onToggle={() => toggle(val, medicamento, setMedicamento)} />
                   ))}
                 </div>
                 {(medicamento === "Si" || medicamento === "Tal vez") && (
-                  <textarea name="medicamento_detalle" defaultValue={saved.medicamento_detalle || ""}
+                  <textarea value={medicamentoDetalle} onChange={e => setMedicamentoDetalle(e.target.value)}
                     placeholder="¿Cuál(es)? Dosis y frecuencia si aplica..." className={`mt-4 ${INPUT}`} rows={2} />
                 )}
               </div>
 
-              {/* 22 — Supervisor extraescolar */}
+              {/* 22 */}
               <div>
                 <RequiredLabel>22. ¿Quién supervisa al estudiante durante actividades extraescolares?</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Madre","Padre","Tutor legal","Madrastra","Padrastro","Otro"].map(val => (
                     <RadioCard key={val} name="supervisor_extraescolar" value={val} label={val}
-                      selected={supervisorExtra} onToggle={() => makeToggle(supervisorExtra, setSupervisorExtra)(val)} />
+                      selected={supervisorExtra} onToggle={() => toggle(val, supervisorExtra, setSupervisorExtra)} />
                   ))}
                 </div>
                 {supervisorExtra === "Otro" && (
                   <div className="mt-4">
                     <label className="block text-xs font-medium text-slate-500 mb-2">Especifique quién supervisa</label>
-                    <input type="text" name="supervisor_otro_especifico" defaultValue={saved.supervisor_otro_especifico || ""}
+                    <input type="text" value={supervisorOtroEsp} onChange={e => setSupervisorOtroEsp(e.target.value)}
                       placeholder="Ej: Abuela, tío, hermano mayor..." className={INPUT} />
                   </div>
                 )}
               </div>
 
-              {/* 23 — Padres fuera del país */}
+              {/* 23 */}
               <div>
                 <RequiredLabel>23. ¿Alguno de los padres reside fuera del país?</RequiredLabel>
                 <div className="flex gap-3">
                   {[["Si","Sí"],["No","No"]].map(([val,lbl]) => (
                     <RadioCard key={val} name="padres_fuera" value={val} label={lbl}
-                      selected={padresFuera} onToggle={() => makeToggle(padresFuera, setPadresFuera)(val)} />
+                      selected={padresFuera} onToggle={() => toggle(val, padresFuera, setPadresFuera)} />
                   ))}
                 </div>
-
                 {padresFuera === "Si" && (
                   <div className="mt-6 space-y-6">
-                    {/* ¿Cuál padre? */}
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-3">Especifique cuál:</label>
                       <div className="flex flex-wrap gap-3">
                         {["Madre","Padre","Ambos"].map(val => (
                           <RadioCard key={val} name="padres_fuera_detalle" value={val} label={val}
-                            selected={padresFueraDetalle} onToggle={() => makeToggle(padresFueraDetalle, setPadresFueraDetalle)(val)} />
+                            selected={padresFueraDetalle} onToggle={() => toggle(val, padresFueraDetalle, setPadresFueraDetalle)} />
                         ))}
                       </div>
                     </div>
-
-                    {/* País madre — controlled */}
                     {(padresFueraDetalle === "Madre" || padresFueraDetalle === "Ambos") && (
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                          País de residencia — Madre
-                        </label>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">País de residencia — Madre</label>
                         <div className="max-w-md space-y-3">
-                          <StyledSelect
-                            name="pais_madre"
-                            value={paisMadre}
-                            onChange={e => setPaisMadre(e.target.value)}
-                          >
+                          <StyledSelect name="pais_madre" value={paisMadre} onChange={e => setPaisMadre(e.target.value)}>
                             <option value="">Seleccione país...</option>
                             {PAISES.filter(p => p !== "Otro").map(p => <option key={p} value={p}>{p}</option>)}
                             <option value="Otro">Otro</option>
                           </StyledSelect>
                           {paisMadre === "Otro" && (
-                            <input type="text" name="pais_madre_otro" defaultValue={saved.pais_madre_otro || ""}
+                            <input type="text" value={paisMadreOtro} onChange={e => setPaisMadreOtro(e.target.value)}
                               placeholder="Escriba el país..." className={INPUT} />
                           )}
                         </div>
                       </div>
                     )}
-
-                    {/* País padre — controlled */}
                     {(padresFueraDetalle === "Padre" || padresFueraDetalle === "Ambos") && (
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                          País de residencia — Padre
-                        </label>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">País de residencia — Padre</label>
                         <div className="max-w-md space-y-3">
-                          <StyledSelect
-                            name="pais_padre"
-                            value={paisPadre}
-                            onChange={e => setPaisPadre(e.target.value)}
-                          >
+                          <StyledSelect name="pais_padre" value={paisPadre} onChange={e => setPaisPadre(e.target.value)}>
                             <option value="">Seleccione país...</option>
                             {PAISES.filter(p => p !== "Otro").map(p => <option key={p} value={p}>{p}</option>)}
                             <option value="Otro">Otro</option>
                           </StyledSelect>
                           {paisPadre === "Otro" && (
-                            <input type="text" name="pais_padre_otro" defaultValue={saved.pais_padre_otro || ""}
+                            <input type="text" value={paisPadreOtro} onChange={e => setPaisPadreOtro(e.target.value)}
                               placeholder="Escriba el país..." className={INPUT} />
                           )}
                         </div>
                       </div>
                     )}
-
                     <div>
                       <OptionalLabel>Observaciones adicionales</OptionalLabel>
-                      <textarea name="observaciones_padres_fuera" defaultValue={saved.observaciones_padres_fuera || ""}
+                      <textarea value={obsPadresFuera} onChange={e => setObsPadresFuera(e.target.value)}
                         placeholder="Detalles sobre la situación, tiempo fuera, visitas, etc..." className={INPUT} rows={3} />
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* 24 — Tipo de casa */}
+              {/* 24 */}
               <div>
                 <RequiredLabel>24. La casa en que viven es:</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Propia","Rentada","Prestada","Otros"].map(val => (
                     <RadioCard key={val} name="tipo_casa" value={val} label={val}
-                      selected={tipoCasa} onToggle={() => makeToggle(tipoCasa, setTipoCasa)(val)} />
+                      selected={tipoCasa} onToggle={() => toggle(val, tipoCasa, setTipoCasa)} />
                   ))}
                 </div>
               </div>
 
-              {/* 25 — Estado de vida de los padres */}
+              {/* 25 */}
               <div>
                 <RequiredLabel>25. Estado de vida de los padres:</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Ambos viven","Solo vive la madre","Solo vive el padre","Ninguno vive"].map(val => (
                     <RadioCard key={val} name="estado_padres" value={val} label={val}
-                      selected={estadoPadres} onToggle={() => makeToggle(estadoPadres, setEstadoPadres)(val)} />
+                      selected={estadoPadres} onToggle={() => toggle(val, estadoPadres, setEstadoPadres)} />
                   ))}
                 </div>
               </div>
 
-              {/* 26 — ¿Con quién convive? */}
+              {/* 26 */}
               <div>
                 <RequiredLabel>26. ¿Con quién convive el estudiante?</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Con ambos","Solo con la madre","Solo con el padre","No convive con ninguno"].map(val => (
                     <RadioCard key={val} name="convive_padres" value={val} label={val}
-                      selected={convivePadres} onToggle={() => makeToggle(convivePadres, setConvivePadres)(val)} />
+                      selected={convivePadres} onToggle={() => toggle(val, convivePadres, setConvivePadres)} />
                   ))}
                 </div>
               </div>
 
-              {/* 27 — Figuras familiares */}
+              {/* 27 */}
               <div>
                 <RequiredLabel>27. ¿Existe alguna de las siguientes figuras en el núcleo familiar?</RequiredLabel>
                 <div className="flex flex-wrap gap-3">
                   {["Madrastra","Padrastro","Ambos","Ninguno"].map(val => (
                     <RadioCard key={val} name="figuras_familiares" value={val} label={val}
-                      selected={figurasFamiliares} onToggle={() => makeToggle(figurasFamiliares, setFigurasFamiliares)(val)} />
+                      selected={figurasFamiliares} onToggle={() => toggle(val, figurasFamiliares, setFigurasFamiliares)} />
                   ))}
                 </div>
               </div>
 
-              {/* 28 — Hermanos / exalumnos en IPISA */}
+              {/* 28 */}
               <div>
                 <RequiredLabel>28. ¿Tiene algún hermano(a) o exalumno en IPISA?</RequiredLabel>
                 <div className="flex gap-3 mb-5">
                   <RadioCard name="hermanos_exalumnos_si_no" value="Si" label="Sí"
                     selected={mostrarHermanos ? "Si" : ""}
-                    onToggle={() => { if (!mostrarHermanos) { setMostrarHermanos(true); if (hermanos.length === 0) addHermano(); } else { setMostrarHermanos(false); setHermanos([]); } }} />
+                    onToggle={() => {
+                      if (modoLectura) return;
+                      if (!mostrarHermanos) { setMostrarHermanos(true); setHermanosNo(false); if (hermanos.length === 0) addHermano(); }
+                      else { setMostrarHermanos(false); setHermanos([]); }
+                    }} />
                   <RadioCard name="hermanos_exalumnos_si_no" value="No" label="No"
-                    selected={!mostrarHermanos && saved.hermanos_exalumnos_si_no === "No" ? "No" : ""}
-                    onToggle={() => { setMostrarHermanos(false); setHermanos([]); }} />
+                    selected={hermanosNo && !mostrarHermanos ? "No" : ""}
+                    onToggle={() => { if (modoLectura) return; setMostrarHermanos(false); setHermanos([]); setHermanosNo(p => !p); }} />
                 </div>
 
                 {mostrarHermanos && (
@@ -496,7 +480,6 @@ export default function Step4Form() {
                           )}
                         </div>
 
-                        {/* ── Tipo ── */}
                         <div className="mb-4">
                           <label className="block text-sm font-medium text-slate-700 mb-3">Tipo</label>
                           <div className="flex flex-wrap gap-3">
@@ -522,42 +505,28 @@ export default function Step4Form() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {/* Nombre */}
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre completo</label>
-                            <input name={`hermanos[${index}].nombre`} type="text" value={h.nombre}
-                              onChange={e => updateHermano(index, "nombre", e.target.value)}
+                            <input type="text" value={h.nombre} onChange={e => updateHermano(index, "nombre", e.target.value)}
                               placeholder="Ej: Ana López" className={INPUT} />
                           </div>
-
-                          {/* Taller */}
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Taller</label>
-                            <StyledSelect
-                              name={`hermanos[${index}].taller`}
-                              value={h.taller}
-                              onChange={e => updateHermano(index, "taller", e.target.value)}
-                            >
+                            <StyledSelect value={h.taller} onChange={e => updateHermano(index, "taller", e.target.value)}>
                               <option value="">Seleccione taller</option>
                               {TALLERES.map(t => <option key={t} value={t}>{t}</option>)}
                             </StyledSelect>
                           </div>
-
-                          {/* Parentesco — para "pariente exalumno" y "pariente" */}
                           {mostrarParentesco(h.tipo) && (
                             <div>
                               <label className="block text-sm font-medium text-slate-700 mb-1.5">Parentesco con el estudiante</label>
-                              <input type="text" name={`hermanos[${index}].otro_especifico`} value={h.otro_especifico || ""}
-                                onChange={e => updateHermano(index, "otro_especifico", e.target.value)}
+                              <input type="text" value={h.otro_especifico || ""} onChange={e => updateHermano(index, "otro_especifico", e.target.value)}
                                 placeholder="Ej: primo, tío, vecino..." className={INPUT} />
                             </div>
                           )}
-
-                          {/* Año de graduación */}
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Año de graduación (si aplica)</label>
-                            <input name={`hermanos[${index}].anio`} type="number" value={h.anio}
-                              onChange={e => updateHermano(index, "anio", e.target.value)}
+                            <input type="number" value={h.anio} onChange={e => updateHermano(index, "anio", e.target.value)}
                               placeholder="Ej: 2023" className={INPUT} />
                           </div>
                         </div>
@@ -574,13 +543,13 @@ export default function Step4Form() {
                 )}
               </div>
 
-              {/* 29 — Valoración de la familia */}
+              {/* 29 */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   29. Valoración de la familia <span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <div className="max-w-xl">
-                  <StyledSelect name="valoracion_familia" value={saved.valoracion_familia || ""} onChange={() => {}}>
+                  <StyledSelect name="valoracion_familia" value={valoracion} onChange={e => setValoracion(e.target.value)}>
                     <option value="">Seleccione</option>
                     <option value="100">100 – Familias muy necesitadas, viven en situación de pobreza</option>
                     <option value="75">75 – Familias necesitadas pero estables, trabaja solo uno de los padres</option>
@@ -597,7 +566,7 @@ export default function Step4Form() {
                   <span className="material-symbols-outlined text-xl" style={{ color: P }}>lock</span>
                   <OptionalLabel className="!mb-0">Observaciones internas</OptionalLabel>
                 </div>
-                <textarea name="observaciones_internas" defaultValue={saved.observaciones_internas || ""}
+                <textarea value={obsInternas} onChange={e => setObsInternas(e.target.value)}
                   placeholder="Notas internas del entrevistador (no aparecen en el PDF)..."
                   className={INPUT} rows={4} />
               </div>
@@ -608,33 +577,27 @@ export default function Step4Form() {
 
         {/* Alertas de validación */}
         {alertas.length > 0 && (
-          <div id="alertas-validacion" className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-left"
+          <div id="alertas-validacion" className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50"
             style={{ animation: "fadeIn .25s ease" }}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3 flex-1">
-                <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="material-symbols-outlined text-white text-base">priority_high</span>
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-red-800 mb-1">Atención requerida</p>
-                  {alertas.length === 1
-                    ? <p className="text-sm text-red-600">Falta completar: {alertas[0]}</p>
-                    : <>
-                        <p className="text-sm text-red-600 mb-2">Faltan {alertas.length} campos por completar:</p>
-                        <ul className="space-y-1">
-                          {alertas.map((a, i) => (
-                            <li key={i} className="text-sm text-red-600 flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
-                              {a}
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                  }
-                </div>
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shadow-sm mt-0.5">
+                <span className="material-symbols-outlined text-white text-lg">priority_high</span>
               </div>
-              <button onClick={() => setAlertas([])} className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0 mt-0.5">
-                <span className="material-symbols-outlined text-xl">close</span>
+              <div className="flex-1">
+                <p className="text-red-900 text-sm font-bold mb-2">
+                  Atención requerida — Falta{alertas.length > 1 ? "n" : ""} {alertas.length} campo{alertas.length > 1 ? "s" : ""} por completar:
+                </p>
+                <ul className="space-y-1">
+                  {alertas.map((a, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-red-700 text-xs">
+                      <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
+                      {a}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <button type="button" onClick={() => setAlertas([])} className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0">
+                <span className="material-symbols-outlined text-lg">close</span>
               </button>
             </div>
           </div>
@@ -663,8 +626,8 @@ export default function Step4Form() {
                 className="px-10 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center gap-2 min-w-[200px] justify-center"
                 style={{
                   background: isSaving ? "#7a909c" : P,
-                  boxShadow: isSaving ? "none" : "0 4px 14px rgba(81,98,111,.4)",
-                  cursor: isSaving ? "not-allowed" : "pointer",
+                  boxShadow:  isSaving ? "none" : "0 4px 14px rgba(81,98,111,.4)",
+                  cursor:     isSaving ? "not-allowed" : "pointer",
                 }}>
                 {isSaving ? (
                   <>
@@ -675,9 +638,7 @@ export default function Step4Form() {
                     Guardando...
                   </>
                 ) : (
-                  <>
-                    Guardar y Finalizar <span className="material-symbols-outlined text-base">check_circle</span>
-                  </>
+                  <>Guardar y Finalizar <span className="material-symbols-outlined text-base">check_circle</span></>
                 )}
               </button>
             )}
@@ -685,13 +646,12 @@ export default function Step4Form() {
         </div>
       </form>
 
-      {/* Modal éxito con animación de check */}
+      {/* Modal éxito */}
       {showSuccess && (
         <div className="fixed inset-0 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm z-50"
           style={{ animation: "fadeIn .2s ease" }}>
           <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center border border-slate-200"
             style={{ animation: "scaleIn .35s cubic-bezier(.34,1.56,.64,1)" }}>
-            {/* Ícono de check animado */}
             <div className="check-circle w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5"
               style={{ background: "rgba(81,98,111,.1)" }}>
               <svg width="44" height="44" viewBox="0 0 44 44" fill="none">

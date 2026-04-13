@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const P     = "#51626f";
@@ -76,15 +76,20 @@ const RadioCard = ({ name, value, label, selected, onToggle }) => {
   );
 };
 
-const StyledSelect = ({ name, value, onChange, defaultValue, children, className = "" }) => (
+const StyledSelect = ({ name, value, onChange, children, className = "" }) => (
   <div className="relative">
-    <select name={name} value={value} onChange={onChange} defaultValue={defaultValue}
+    <select name={name} value={value} onChange={onChange}
       className={`appearance-none w-full px-4 py-3 pr-10 rounded-lg border border-slate-300 bg-white text-slate-700 outline-none cursor-pointer transition-all ${FOCUS} ${className}`}>
       {children}
     </select>
     <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 material-symbols-outlined text-lg">expand_more</span>
   </div>
 );
+
+function readStorage() {
+  try { const r = window.localStorage.getItem("entrevista"); return r ? JSON.parse(r) : {}; }
+  catch { window.localStorage.removeItem("entrevista"); return {}; }
+}
 
 const LISTA_ENTREVISTADORES = [
   "Padre Almonte",
@@ -98,28 +103,36 @@ const TELEFONO_VACIO  = { numero: "", dueno: "" };
 
 export default function Step3Form() {
   const navigate    = useNavigate();
-  const [saved]     = useState(() => JSON.parse(localStorage.getItem("entrevista") || "{}"));
   const modoLectura = localStorage.getItem("entrevista_modo_lectura") === "true";
 
-  const [alfabetizacion,  setAlfabetizacion]  = useState("");
-  const [otraInstitucion, setOtraInstitucion] = useState("");
-  const [repetidoCurso,   setRepetidoCurso]   = useState("");
-  const [errores,         setErrores]         = useState([]);
+  // ── Leer storage una sola vez al montar ───────────────────────────────────
+  const s = readStorage();
 
-  const makeToggle = (getter, setter) => (val) => {
-    if (modoLectura) return;
-    setter(getter === val ? "" : val);
-    if (errores.length) setErrores([]);
-  };
+  // ── TODOS los campos como estado controlado ───────────────────────────────
+  const [convivencia,          setConvivencia]          = useState(s.convivencia              || "");
+  const [motivos,              setMotivos]              = useState(s.motivos                  || "");
+  const [otraInstitucion,      setOtraInstitucion]      = useState(s.otra_institucion         || "");
+  const [dificultades,         setDificultades]         = useState(s.dificultades             || "");
+  const [estudianteDescr,      setEstudianteDescr]      = useState(s.estudiante_descr         || "");
+  const [repetidoCurso,        setRepetidoCurso]        = useState(s.repetido_curso           || "");
+  const [repetido,             setRepetido]             = useState(s.repetido                 || "");
+  const [alfabetizacion,       setAlfabetizacion]       = useState(s.alfabetizacion           || "");
+  const [alfabetizacionDetalle,setAlfabetizacionDetalle]= useState(s.alfabetizacion_detalle   || "");
+  const [motivacion,           setMotivacion]           = useState(s.motivacion               || "");
+  const [ingresoReal,          setIngresoReal]          = useState(s.ingreso_real             || "");
+  const [aporteMensual,        setAporteMensual]        = useState(s.aporte_mensual           || "");
+  const [observaciones,        setObservaciones]        = useState(s.observaciones            || "");
 
-  const savedEnt = saved.entrevistador || "";
+  // ── Entrevistador ─────────────────────────────────────────────────────────
+  const savedEnt = s.entrevistador || "";
   const esOtro   = savedEnt !== "" && !LISTA_ENTREVISTADORES.includes(savedEnt);
   const [entrevistadorSelect, setEntrevistadorSelect] = useState(esOtro ? "otro" : savedEnt);
   const [entrevistadorOtro,   setEntrevistadorOtro]   = useState(esOtro ? savedEnt : "");
 
+  // ── Teléfonos ─────────────────────────────────────────────────────────────
   const initTels = () => {
-    if (saved.telefonos?.length > 0) return saved.telefonos;
-    if (saved.telefono) return [{ numero: saved.telefono, dueno: saved.telefono_dueno || "" }];
+    if (s.telefonos?.length > 0) return s.telefonos;
+    if (s.telefono) return [{ numero: s.telefono, dueno: s.telefono_dueno || "" }];
     return [{ ...TELEFONO_VACIO }];
   };
   const [telefonos, setTelefonos] = useState(initTels);
@@ -128,58 +141,79 @@ export default function Step3Form() {
   const removeTelefono = (i) => { if (telefonos.length > 1) setTelefonos(telefonos.filter((_, j) => j !== i)); };
   const updateTel      = (i, field, val) => {
     const arr = [...telefonos]; arr[i] = { ...arr[i], [field]: val }; setTelefonos(arr);
+  };
+
+  const [errores, setErrores] = useState([]);
+
+  const toggle = (val, getter, setter) => {
+    if (modoLectura) return;
+    setter(getter === val ? "" : val);
     if (errores.length) setErrores([]);
   };
 
-  const clearErr = () => { if (errores.length) setErrores([]); };
-
-  const validar = (values) => {
-    const err = [];
-    if (!values.convivencia?.trim())      err.push("Pregunta 10: ¿Con quién vive el estudiante?");
-    if (!values.motivos?.trim())          err.push("Pregunta 11: Motivos para elegir la institución");
-    if (!otraInstitucion)                 err.push("Pregunta 12: ¿Viene de otra institución? (Sí / No)");
-    if (otraInstitucion === "Si" && !values.dificultades?.trim())
-                                          err.push("Pregunta 12: Especifique las dificultades");
-    if (!values.estudiante_descr?.trim()) err.push("Pregunta 13: Descripción del estudiante");
-    if (!repetidoCurso)                   err.push("Pregunta 14: ¿Ha repetido algún curso? (Sí / No)");
-    if (repetidoCurso === "Si" && !values.repetido?.trim())
-                                          err.push("Pregunta 14: Especifique el curso y motivo");
-    if (!alfabetizacion)                  err.push("Pregunta 15: Problemas de alfabetización (Sí / No)");
-    if (alfabetizacion === "Si" && !values.alfabetizacion_detalle?.trim())
-                                          err.push("Pregunta 15: Especifique los problemas de alfabetización");
-    if (!values.motivacion?.trim())       err.push("Pregunta 16: Motivación del estudiante");
-    if (!values.ingreso_real?.trim())     err.push("Pregunta 17: Ingreso real de la familia");
-    if (!values.aporte_mensual?.trim())   err.push("Pregunta 18: Aporte mensual sugerido");
-    if (!telefonos.some(t => t.numero.trim()))
-                                          err.push("Pregunta 19: Al menos un teléfono de contacto");
+  // ── AUTO-GUARDADO ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (modoLectura) return;
+    const existing = readStorage();
     const entFinal = entrevistadorSelect === "otro" ? entrevistadorOtro.trim() : entrevistadorSelect;
-    if (!entFinal)                        err.push("Entrevistador: Seleccione o escriba quién realizó la entrevista");
+    const data = {
+      ...existing,
+      convivencia,
+      motivos,
+      otra_institucion:        otraInstitucion,
+      dificultades:            otraInstitucion === "Si" ? dificultades : "",
+      estudiante_descr:        estudianteDescr,
+      repetido_curso:          repetidoCurso,
+      repetido:                repetidoCurso === "Si" ? repetido : "",
+      alfabetizacion,
+      alfabetizacion_detalle:  alfabetizacion === "Si" ? alfabetizacionDetalle : "",
+      motivacion,
+      ingreso_real:            ingresoReal,
+      aporte_mensual:          aporteMensual,
+      telefonos,
+      observaciones,
+      entrevistador:           entFinal,
+    };
+    localStorage.setItem("entrevista", JSON.stringify(data));
+  }, [
+    convivencia, motivos, otraInstitucion, dificultades, estudianteDescr,
+    repetidoCurso, repetido, alfabetizacion, alfabetizacionDetalle,
+    motivacion, ingresoReal, aporteMensual, telefonos,
+    observaciones, entrevistadorSelect, entrevistadorOtro,
+  ]);
+
+  // ── Validación ────────────────────────────────────────────────────────────
+  const validar = () => {
+    const err = [];
+    if (!convivencia.trim())                                    err.push("Pregunta 10: ¿Con quién vive el estudiante?");
+    if (!motivos.trim())                                        err.push("Pregunta 11: Motivos para elegir la institución");
+    if (!otraInstitucion)                                       err.push("Pregunta 12: ¿Viene de otra institución? (Sí / No)");
+    if (otraInstitucion === "Si" && !dificultades.trim())       err.push("Pregunta 12: Especifique las dificultades");
+    if (!estudianteDescr.trim())                                err.push("Pregunta 13: Descripción del estudiante");
+    if (!repetidoCurso)                                         err.push("Pregunta 14: ¿Ha repetido algún curso? (Sí / No)");
+    if (repetidoCurso === "Si" && !repetido.trim())             err.push("Pregunta 14: Especifique el curso y motivo");
+    if (!alfabetizacion)                                        err.push("Pregunta 15: Problemas de alfabetización (Sí / No)");
+    if (alfabetizacion === "Si" && !alfabetizacionDetalle.trim())
+                                                                err.push("Pregunta 15: Especifique los problemas de alfabetización");
+    if (!motivacion.trim())                                     err.push("Pregunta 16: Motivación del estudiante");
+    if (!ingresoReal.trim())                                    err.push("Pregunta 17: Ingreso real de la familia");
+    if (!aporteMensual.trim())                                  err.push("Pregunta 18: Aporte mensual sugerido");
+    if (!telefonos.some(t => t.numero.trim()))                  err.push("Pregunta 19: Al menos un teléfono de contacto");
+    const entFinal = entrevistadorSelect === "otro" ? entrevistadorOtro.trim() : entrevistadorSelect;
+    if (!entFinal)                                              err.push("Entrevistador: Seleccione o escriba quién realizó la entrevista");
     return err;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (modoLectura) { navigate("/paso4"); return; }
-    const form   = new FormData(e.target);
-    const values = Object.fromEntries(form.entries());
-
-    const err = validar(values);
+    const err = validar();
     if (err.length) {
       setErrores(err);
       setTimeout(() => document.getElementById("alertas-step3")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
       return;
     }
-    setErrores([]);
-
-    const data = {
-      ...saved, ...values,
-      alfabetizacion, otra_institucion: otraInstitucion, repetido_curso: repetidoCurso, telefonos,
-    };
-    if (alfabetizacion  !== "Si") data.alfabetizacion_detalle = "";
-    if (otraInstitucion !== "Si") data.dificultades           = "";
-    if (repetidoCurso   !== "Si") data.repetido               = "";
-    data.entrevistador = entrevistadorSelect === "otro" ? entrevistadorOtro.trim() : entrevistadorSelect;
-    localStorage.setItem("entrevista", JSON.stringify(data));
+    // El useEffect ya guardó todo, solo navegamos
     navigate("/paso4");
   };
 
@@ -188,11 +222,6 @@ export default function Step3Form() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined');
         @keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
-        select {
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
-          background-position: right .75rem center; background-repeat: no-repeat;
-          background-size: 1.25em; padding-right: 2.5rem !important;
-        }
         select:focus { outline: none; border-color: #51626f; box-shadow: 0 0 0 2px rgba(81,98,111,.15); }
       `}</style>
 
@@ -225,8 +254,8 @@ export default function Step3Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   10. ¿Con quién vive el estudiante? En caso de no ser con su/s padre/s, ¿Por qué? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="convivencia" defaultValue={saved.convivencia || ""}
-                  placeholder="Describa la situación de convivencia..." className={INPUT} rows={2} onChange={clearErr} />
+                <textarea value={convivencia} onChange={e => { setConvivencia(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Describa la situación de convivencia..." className={INPUT} rows={2} />
               </div>
 
               {/* 11 */}
@@ -234,8 +263,8 @@ export default function Step3Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   11. ¿Por qué su familia quiere pertenecer a esta institución? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="motivos" defaultValue={saved.motivos || ""}
-                  placeholder="Motivaciones para elegir esta institución..." className={INPUT} rows={3} onChange={clearErr} />
+                <textarea value={motivos} onChange={e => { setMotivos(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Motivaciones para elegir esta institución..." className={INPUT} rows={3} />
               </div>
 
               {/* 12 */}
@@ -247,7 +276,7 @@ export default function Step3Form() {
                   {[["Si","Sí, viene de otra institución"],["No","No, no viene de otra institución"]].map(([val, lbl]) => (
                     <RadioCard key={val} name="otra_institucion" value={val} label={lbl}
                       selected={otraInstitucion}
-                      onToggle={() => makeToggle(otraInstitucion, setOtraInstitucion)(val)} />
+                      onToggle={() => toggle(val, otraInstitucion, setOtraInstitucion)} />
                   ))}
                 </div>
                 {otraInstitucion === "Si" && (
@@ -255,8 +284,8 @@ export default function Step3Form() {
                     <label className="block text-xs font-medium text-slate-500 mb-2">
                       ¿Se presentó alguna dificultad? ¿Cómo entiende que podemos ayudar? <span className="text-red-400">*</span>
                     </label>
-                    <textarea name="dificultades" defaultValue={saved.dificultades || ""}
-                      placeholder="Detalle dificultades previas y expectativas de apoyo..." className={INPUT} rows={3} onChange={clearErr} />
+                    <textarea value={dificultades} onChange={e => { setDificultades(e.target.value); if (errores.length) setErrores([]); }}
+                      placeholder="Detalle dificultades previas y expectativas de apoyo..." className={INPUT} rows={3} />
                   </div>
                 )}
               </div>
@@ -266,8 +295,8 @@ export default function Step3Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   13. Al estudiante: Háblanos un poco de tu familia, ¿Qué tiempo le dedicas al estudio?, ¿En cuál/es asignatura/s consideras que te destacas? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="estudiante_descr" defaultValue={saved.estudiante_descr || ""}
-                  placeholder="Respuesta del estudiante..." className={INPUT} rows={3} onChange={clearErr} />
+                <textarea value={estudianteDescr} onChange={e => { setEstudianteDescr(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Respuesta del estudiante..." className={INPUT} rows={3} />
               </div>
 
               {/* 14 */}
@@ -279,7 +308,7 @@ export default function Step3Form() {
                   {[["Si","Sí"],["No","No"]].map(([val, lbl]) => (
                     <RadioCard key={val} name="repetido_curso" value={val} label={lbl}
                       selected={repetidoCurso}
-                      onToggle={() => makeToggle(repetidoCurso, setRepetidoCurso)(val)} />
+                      onToggle={() => toggle(val, repetidoCurso, setRepetidoCurso)} />
                   ))}
                 </div>
                 {repetidoCurso === "Si" && (
@@ -287,8 +316,8 @@ export default function Step3Form() {
                     <label className="block text-xs font-medium text-slate-500 mb-2">
                       Especifique el curso y el motivo <span className="text-red-400">*</span>
                     </label>
-                    <textarea name="repetido" defaultValue={saved.repetido || ""}
-                      placeholder="Ej: Repitió 3ro de primaria por dificultades de aprendizaje..." className={INPUT} rows={2} onChange={clearErr} />
+                    <textarea value={repetido} onChange={e => { setRepetido(e.target.value); if (errores.length) setErrores([]); }}
+                      placeholder="Ej: Repitió 3ro de primaria por dificultades de aprendizaje..." className={INPUT} rows={2} />
                   </div>
                 )}
               </div>
@@ -302,12 +331,14 @@ export default function Step3Form() {
                   {[["Si","Sí"],["No","No"]].map(([val, lbl]) => (
                     <RadioCard key={val} name="alfabetizacion" value={val} label={lbl}
                       selected={alfabetizacion}
-                      onToggle={() => makeToggle(alfabetizacion, setAlfabetizacion)(val)} />
+                      onToggle={() => toggle(val, alfabetizacion, setAlfabetizacion)} />
                   ))}
                 </div>
                 {alfabetizacion === "Si" && (
-                  <textarea name="alfabetizacion_detalle" defaultValue={saved.alfabetizacion_detalle || ""}
-                    placeholder="Especifique motivo, duración y profesional..." className={`mt-4 ${INPUT}`} rows={2} onChange={clearErr} />
+                  <textarea value={alfabetizacionDetalle}
+                    onChange={e => { setAlfabetizacionDetalle(e.target.value); if (errores.length) setErrores([]); }}
+                    placeholder="Especifique motivo, duración y profesional..."
+                    className={`mt-4 ${INPUT}`} rows={2} />
                 )}
               </div>
 
@@ -316,8 +347,8 @@ export default function Step3Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   16. ¿Deseas estudiar en esta escuela? ¿Qué ha escuchado de este centro? ¿Qué te motiva a estar acá? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="motivacion" defaultValue={saved.motivacion || ""}
-                  placeholder="Motivación del estudiante..." className={INPUT} rows={3} onChange={clearErr} />
+                <textarea value={motivacion} onChange={e => { setMotivacion(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Motivación del estudiante..." className={INPUT} rows={3} />
               </div>
 
               {/* 17, 18 */}
@@ -328,8 +359,9 @@ export default function Step3Form() {
                   </label>
                   <div className="relative">
                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500 pointer-events-none">$</span>
-                    <input name="ingreso_real" type="text" defaultValue={saved.ingreso_real || ""}
-                      placeholder="0.00" className={`pl-8 ${INPUT}`} onChange={clearErr} />
+                    <input type="text" value={ingresoReal}
+                      onChange={e => { setIngresoReal(e.target.value); if (errores.length) setErrores([]); }}
+                      placeholder="0.00" className={`pl-8 ${INPUT}`} />
                   </div>
                 </div>
                 <div>
@@ -338,8 +370,9 @@ export default function Step3Form() {
                   </label>
                   <div className="relative">
                     <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500 pointer-events-none">$</span>
-                    <input name="aporte_mensual" type="text" defaultValue={saved.aporte_mensual || ""}
-                      placeholder="0.00" className={`pl-8 ${INPUT}`} onChange={clearErr} />
+                    <input type="text" value={aporteMensual}
+                      onChange={e => { setAporteMensual(e.target.value); if (errores.length) setErrores([]); }}
+                      placeholder="0.00" className={`pl-8 ${INPUT}`} />
                   </div>
                 </div>
               </div>
@@ -391,7 +424,7 @@ export default function Step3Form() {
                   <label className="block text-sm font-semibold text-slate-700">Observaciones externas</label>
                   <span className="text-xs text-slate-400">(opcional)</span>
                 </div>
-                <textarea name="observaciones" defaultValue={saved.observaciones || ""}
+                <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)}
                   placeholder="Notas adicionales del entrevistador que aparecen al momento de la impresión..."
                   className={INPUT} rows={4} />
               </div>
@@ -403,7 +436,11 @@ export default function Step3Form() {
                 </label>
                 <StyledSelect
                   value={entrevistadorSelect}
-                  onChange={e => { setEntrevistadorSelect(e.target.value); if (e.target.value !== "otro") setEntrevistadorOtro(""); clearErr(); }}
+                  onChange={e => {
+                    setEntrevistadorSelect(e.target.value);
+                    if (e.target.value !== "otro") setEntrevistadorOtro("");
+                    if (errores.length) setErrores([]);
+                  }}
                 >
                   <option value="" disabled>Seleccione entrevistador(a)...</option>
                   {LISTA_ENTREVISTADORES.map(n => <option key={n} value={n}>{n}</option>)}
@@ -411,7 +448,7 @@ export default function Step3Form() {
                 </StyledSelect>
                 {entrevistadorSelect === "otro" && (
                   <input type="text" value={entrevistadorOtro}
-                    onChange={e => { setEntrevistadorOtro(e.target.value); clearErr(); }}
+                    onChange={e => { setEntrevistadorOtro(e.target.value); if (errores.length) setErrores([]); }}
                     placeholder="Escriba el nombre del entrevistador..."
                     className={`mt-3 ${INPUT}`} />
                 )}

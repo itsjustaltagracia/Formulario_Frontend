@@ -55,6 +55,51 @@ function useNivelAcademico(init = {}) {
   return { nivel, duracion, setDuracion, tipo, setTipo, showDur, showTipo, onChange };
 }
 
+// ── NivelSelect definido FUERA del componente principal ──────────────────────
+// Esto evita que React lo desmonte/remonte en cada render, lo que causaba
+// que el campo "Especifique el tipo" perdiera el foco al escribir.
+const NivelSelect = ({ hook, onClearErrors }) => (
+  <div>
+    <select
+      value={hook.nivel}
+      onChange={e => { hook.onChange(e.target.value); onClearErrors(); }}
+      className={SELECT}
+    >
+      <option value="">Seleccione</option>
+      {NIVEL_OPS.map(v => <option key={v} value={v}>{NIVEL_LABELS[v]}</option>)}
+    </select>
+
+    {hook.showDur && (
+      <div className="mt-4">
+        <label className="block text-sm font-medium text-slate-700 mb-2">Estado de estudios</label>
+        <select
+          value={hook.duracion}
+          onChange={e => { hook.setDuracion(e.target.value); onClearErrors(); }}
+          className={SELECT}
+        >
+          <option value="">Seleccione estado</option>
+          <option value="completado">Completado</option>
+          <option value="en_proceso">En proceso</option>
+          <option value="incompleto">Incompleto</option>
+        </select>
+      </div>
+    )}
+
+    {hook.showTipo && (
+      <div className="mt-4">
+        <label className="block text-sm font-medium text-slate-700 mb-2">Especifique el tipo</label>
+        <input
+          value={hook.tipo}
+          onChange={e => { hook.setTipo(e.target.value); onClearErrors(); }}
+          placeholder="Ej: en Derecho"
+          className={INPUT}
+          type="text"
+        />
+      </div>
+    )}
+  </div>
+);
+
 export default function Step1Form() {
   const navigate = useNavigate();
 
@@ -63,7 +108,7 @@ export default function Step1Form() {
   const [currentDate, setCurrentDate] = useState("");
   const [query,       setQuery]       = useState("");
   const [resultados,  setResultados]  = useState([]);
-  const [errores,     setErrores]     = useState([]); // array de strings
+  const [errores,     setErrores]     = useState([]);
 
   const [entrevistados, setEntrevistados] = useState(() => {
     if (saved.entrevistados) return saved.entrevistados.map(e => ({ ...e, id: e.id || Date.now() }));
@@ -82,6 +127,8 @@ export default function Step1Form() {
   const [vinculacion,            setVinculacion]           = useState(saved.vinculacion || "");
   const [especificarVinculacion, setEspecificarVinculacion] = useState(saved.especificar_vinculacion || "");
 
+  const clearErrors = () => { if (errores.length) setErrores([]); };
+
   useEffect(() => { setCurrentDate(new Date().toISOString().split("T")[0]); }, []);
   useEffect(() => { setMostrarTutorFields(entrevistados.some(e => e.parentesco === "tutor")); }, [entrevistados]);
 
@@ -89,7 +136,7 @@ export default function Step1Form() {
     if (modoLectura) return;
     setVinculacion(v => v === valor ? "" : valor);
     if (valor !== vinculacion) setEspecificarVinculacion("");
-    if (errores.length) setErrores([]);
+    clearErrors();
   };
 
   const buscar = (texto) => {
@@ -143,25 +190,22 @@ export default function Step1Form() {
     window.location.reload();
   };
 
-  const handleNombreChange     = (i, v) => { const a = [...entrevistados]; a[i].nombre = v; setEntrevistados(a); if(errores.length) setErrores([]); };
-  const handleParentescoChange = (i, v) => { const a = [...entrevistados]; a[i].parentesco = v; setEntrevistados(a); if(errores.length) setErrores([]); };
-  const handleOtroChange       = (i, v) => { const a = [...entrevistados]; a[i].parentesco_otro = v; setEntrevistados(a); if(errores.length) setErrores([]); };
+  const handleNombreChange     = (i, v) => { const a = [...entrevistados]; a[i].nombre = v; setEntrevistados(a); clearErrors(); };
+  const handleParentescoChange = (i, v) => { const a = [...entrevistados]; a[i].parentesco = v; setEntrevistados(a); clearErrors(); };
+  const handleOtroChange       = (i, v) => { const a = [...entrevistados]; a[i].parentesco_otro = v; setEntrevistados(a); clearErrors(); };
   const addEntrevistado    = () => setEntrevistados([...entrevistados, { id: Date.now(), nombre: "", parentesco: "", parentesco_otro: "" }]);
   const removeEntrevistado = (i) => { if (entrevistados.length > 1) setEntrevistados(entrevistados.filter((_, j) => j !== i)); };
 
-  // ── Validación completa ────────────────────────────────────────────────────
   const validar = (form) => {
     const f   = (n) => form.get(n)?.trim() || "";
     const err = [];
 
-    // Datos básicos — formulario es opcional, sección es opcional
     if (!f("formulario")) err.push("Número de formulario");
     if (!f("nombres"))   err.push("Nombre(s) del estudiante");
     if (!f("apellidos")) err.push("Apellido(s) del estudiante");
     if (!f("sexo"))      err.push("Sexo del estudiante");
     if (!f("edad"))      err.push("Edad del estudiante");
 
-    // Entrevistados
     entrevistados.forEach((ent, i) => {
       if (!ent.nombre.trim()) err.push(`Nombre del entrevistado ${i + 1}`);
       if (!ent.parentesco)    err.push(`Parentesco del entrevistado ${i + 1}`);
@@ -169,11 +213,9 @@ export default function Step1Form() {
         err.push(`Especifique el parentesco del entrevistado ${i + 1}`);
     });
 
-    // Nivel académico madre y padre (al menos el nivel)
     if (!madre.nivel) err.push("Nivel académico de la madre");
     if (!padre.nivel) err.push("Nivel académico del padre");
 
-    // Estado de estudios cuando aplica
     if (madre.showDur && !madre.duracion) err.push("Estado de estudios de la madre");
     if (padre.showDur && !padre.duracion) err.push("Estado de estudios del padre");
     if (mostrarTutorFields && tutor.showDur && !tutor.duracion) err.push("Estado de estudios del tutor legal");
@@ -199,34 +241,6 @@ export default function Step1Form() {
     localStorage.setItem("entrevista", JSON.stringify(data));
     navigate("/paso2");
   };
-
-  const NivelSelect = ({ label, hook }) => (
-    <div>
-      {label && <label className="block text-sm font-medium text-slate-700 mb-2">{label}</label>}
-      <select value={hook.nivel} onChange={e => { hook.onChange(e.target.value); if(errores.length) setErrores([]); }} className={SELECT}>
-        <option value="">Seleccione</option>
-        {NIVEL_OPS.map(v => <option key={v} value={v}>{NIVEL_LABELS[v]}</option>)}
-      </select>
-      {hook.showDur && (
-        <div className="mt-4">
-          <label className="block text-sm font-medium text-slate-700 mb-2">Estado de estudios</label>
-          <select value={hook.duracion} onChange={e => { hook.setDuracion(e.target.value); if(errores.length) setErrores([]); }} className={SELECT}>
-            <option value="">Seleccione estado</option>
-            <option value="completado">Completado</option>
-            <option value="en_proceso">En proceso</option>
-            <option value="incompleto">Incompleto</option>
-          </select>
-        </div>
-      )}
-      {hook.showTipo && (
-        <div className="mt-4">
-          <label className="block text-sm font-medium text-slate-700 mb-2">Especifique el tipo</label>
-          <input value={hook.tipo} onChange={e => { hook.setTipo(e.target.value); if(errores.length) setErrores([]); }}
-            placeholder="Ej: en Derecho" className={INPUT} type="text" />
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <FormWrapper>
@@ -368,12 +382,12 @@ export default function Step1Form() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Formulario <span className="text-red-400">*</span></label>
               <input name="formulario" defaultValue={saved.formulario || ""} placeholder="0"
-                className={INPUT} type="text" onChange={() => errores.length && setErrores([])} />
+                className={INPUT} type="text" onChange={clearErrors} />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Sección</label>
               <input name="seccion" defaultValue={saved.seccion || ""} placeholder="0"
-                className={INPUT} type="text" onChange={() => errores.length && setErrores([])} />
+                className={INPUT} type="text" onChange={clearErrors} />
             </div>
           </div>
 
@@ -387,16 +401,16 @@ export default function Step1Form() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Nombre(s) <span className="text-red-400">*</span></label>
                 <input name="nombres" defaultValue={saved.nombres || ""} placeholder="Ingrese nombres"
-                  className={INPUT} type="text" onChange={() => errores.length && setErrores([])} />
+                  className={INPUT} type="text" onChange={clearErrors} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Apellido(s) <span className="text-red-400">*</span></label>
                 <input name="apellidos" defaultValue={saved.apellidos || ""} placeholder="Ingrese apellidos"
-                  className={INPUT} type="text" onChange={() => errores.length && setErrores([])} />
+                  className={INPUT} type="text" onChange={clearErrors} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Sexo <span className="text-red-400">*</span></label>
-                <select name="sexo" defaultValue={saved.sexo || ""} className={SELECT} onChange={() => errores.length && setErrores([])}>
+                <select name="sexo" defaultValue={saved.sexo || ""} className={SELECT} onChange={clearErrors}>
                   <option value="">Seleccione</option>
                   <option value="M">Masculino</option>
                   <option value="F">Femenino</option>
@@ -405,7 +419,7 @@ export default function Step1Form() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Edad <span className="text-red-400">*</span></label>
                 <input name="edad" defaultValue={saved.edad || ""} placeholder="0"
-                  className={INPUT} type="number" onChange={() => errores.length && setErrores([])} />
+                  className={INPUT} type="number" onChange={clearErrors} />
               </div>
             </div>
           </div>
@@ -461,7 +475,6 @@ export default function Step1Form() {
                 )}
               </div>
             ))}
-            {/* Botón con el color correcto (#51626f) */}
             <button type="button" onClick={addEntrevistado}
               className="px-6 py-2 rounded-full font-medium flex items-center gap-2 transition-all hover:opacity-80 text-sm text-white"
               style={{ background: P }}>
@@ -480,13 +493,13 @@ export default function Step1Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Nivel académico - Madre <span className="text-red-400">*</span>
                 </label>
-                <NivelSelect hook={madre} />
+                <NivelSelect hook={madre} onClearErrors={clearErrors} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Nivel académico - Padre <span className="text-red-400">*</span>
                 </label>
-                <NivelSelect hook={padre} />
+                <NivelSelect hook={padre} onClearErrors={clearErrors} />
               </div>
             </div>
             {mostrarTutorFields && (
@@ -496,7 +509,7 @@ export default function Step1Form() {
                   <h3 className="text-lg font-semibold text-slate-800">Nivel académico - Tutor Legal</h3>
                 </div>
                 <div className="max-w-md">
-                  <NivelSelect hook={tutor} />
+                  <NivelSelect hook={tutor} onClearErrors={clearErrors} />
                 </div>
                 <p className="mt-2 text-xs text-slate-500 italic">Campo opcional — solo aplica si el entrevistado es el tutor legal</p>
               </div>
@@ -557,7 +570,7 @@ export default function Step1Form() {
               <div className="mt-6">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Especifique la relación (ej: exalumno, trabaja, animador, etc.)</label>
                 <textarea value={especificarVinculacion}
-                  onChange={e => { setEspecificarVinculacion(e.target.value); if(errores.length) setErrores([]); }}
+                  onChange={e => { setEspecificarVinculacion(e.target.value); clearErrors(); }}
                   placeholder="Detalles de la vinculación..." className={INPUT} rows={3} />
               </div>
             )}
@@ -565,9 +578,9 @@ export default function Step1Form() {
 
         </fieldset>
 
-        {/* ── ALERTA DE ERRORES DETALLADA ── */}
+        {/* Alerta de errores */}
         {errores.length > 0 && (
-          <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50">
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shadow-sm mt-0.5">
                 <span className="material-symbols-outlined text-white text-lg">priority_high</span>

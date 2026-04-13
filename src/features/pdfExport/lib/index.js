@@ -33,20 +33,28 @@ function buildNivelLabel(nivel, duracion, tipo) {
   return l;
 }
 
-// ─── Formatear teléfonos para impresión ───────────────────────────────────────
 function buildTelefonosLabel(data) {
-  // Nuevo formato: array de {dueno, numero}
   if (Array.isArray(data.telefonos) && data.telefonos.length > 0) {
     return data.telefonos
       .filter(t => t.numero && String(t.numero).trim() !== '')
       .map(t => t.dueno ? `${t.dueno}: ${t.numero}` : t.numero)
       .join('   |   ');
   }
-  // Compatibilidad hacia atrás: campo único
   const num = pick(data, ['telefono']);
   const due = pick(data, ['telefono_dueno']);
   if (!num) return '';
   return due ? `${due}: ${num}` : num;
+}
+
+// ── Combina la respuesta Sí/No con el detalle opcional ────────────────────────
+// flagKey   → key que guarda "Si" o "No"
+// detailKey → key que guarda el texto de detalle (solo cuando es "Si")
+function yesNoDetail(data, flagKey, detailKey) {
+  const flag   = pick(data, [flagKey]);
+  const detail = detailKey ? pick(data, [detailKey]) : '';
+  if (!flag) return '';
+  if (flag === 'Si' || flag === 'Sí') return detail ? `Sí – ${detail}` : 'Sí';
+  return 'No';
 }
 
 function getInfo(data = {}) {
@@ -54,27 +62,18 @@ function getInfo(data = {}) {
   const mapaP = { madre: 'Madre', padre: 'Padre', madrastra: 'Madrastra', padrastro: 'Padrastro', tutor: 'Tutor Legal' };
 
   const entrevistado = items.length > 0
-    ? items.map(function(e) { return e.nombre || ''; }).filter(Boolean).join(' / ')
+    ? items.map(e => e.nombre || '').filter(Boolean).join(' / ')
     : pick(data, ['entrevistado']);
 
   const parentesco = items.length > 0
-    ? items.map(function(e) {
+    ? items.map(e => {
         const pRaw = e.parentesco || '';
         return pRaw === 'otro' ? (e.parentesco_otro || 'Otro') : (mapaP[pRaw] || pRaw);
       }).filter(Boolean).join(' / ')
-    : (function() {
+    : (() => {
         const pRaw = pick(data, ['parentesco']);
         return pRaw === 'otro' ? pick(data, ['parentesco_otro']) : (mapaP[pRaw] || pRaw);
       })();
-
-  const ayudaPsic = pick(data, ['ayuda_psic']);
-  const agresion  = pick(data, ['agresion_ocurrida']);
-  const alfab     = pick(data, ['alfabetizacion']);
-
-  const yesDetail = (flag, detailKey) =>
-    flag === 'Si'
-      ? 'Sí' + (pick(data, [detailKey]) ? ' – ' + pick(data, [detailKey]) : '')
-      : flag === 'No' ? 'No' : '';
 
   return {
     fecha:         pick(data, ['fecha']),
@@ -94,21 +93,30 @@ function getInfo(data = {}) {
     entrevistador: pick(data, ['entrevistador']),
     observaciones: pick(data, ['observaciones']),
     telefonos:     buildTelefonosLabel(data),
+
     q1:  pick(data, ['conducta']),
     q2:  pick(data, ['inconvenientes']),
-    q3:  yesDetail(ayudaPsic, 'ayuda_psic_detalle'),
+    q3:  yesNoDetail(data, 'ayuda_psic', 'ayuda_psic_detalle'),
     q4:  pick(data, ['zona_vivienda']),
     q5:  pick(data, ['habitos']),
     q6:  pick(data, ['actividades_familia']),
     q7:  pick(data, ['tiempo_juntos']),
     q8:  pick(data, ['expectativas_centro']),
-    q9:  yesDetail(agresion, 'agresiones'),
+    q9:  yesNoDetail(data, 'agresion_ocurrida', 'agresiones'),
     q10: pick(data, ['convivencia']),
     q11: pick(data, ['motivos']),
-    q12: pick(data, ['dificultades']),
+
+    // ANTES: pick(data, ['dificultades'])  ← solo mostraba si había detalle, nunca "No"
+    // AHORA: lee "otra_institucion" (Sí/No) + "dificultades" (detalle cuando es Sí)
+    q12: yesNoDetail(data, 'otra_institucion', 'dificultades'),
+
     q13: pick(data, ['estudiante_descr']),
-    q14: pick(data, ['repetido']),
-    q15: yesDetail(alfab, 'alfabetizacion_detalle'),
+
+    // ANTES: pick(data, ['repetido'])  ← solo mostraba si había detalle, nunca "No"
+    // AHORA: lee "repetido_curso" (Sí/No) + "repetido" (detalle cuando es Sí)
+    q14: yesNoDetail(data, 'repetido_curso', 'repetido'),
+
+    q15: yesNoDetail(data, 'alfabetizacion', 'alfabetizacion_detalle'),
     q16: pick(data, ['motivacion']),
     q17: pick(data, ['ingreso_real']),
     q18: pick(data, ['aporte_mensual']),
@@ -155,31 +163,46 @@ async function loadImageAsDataUrl(src) {
       c.getContext('2d').drawImage(img, 0, 0);
       resolve(c.toDataURL('image/png'));
     };
-    img.onerror = () => {
-      console.warn('[PDF] No se pudo cargar el logo:', src);
-      resolve(null);
-    };
+    img.onerror = () => { console.warn('[PDF] No se pudo cargar el logo:', src); resolve(null); };
     img.src = src;
   });
 }
 
 // ─── Bloque de preguntas ──────────────────────────────────────────────────────
 function drawQuestions(doc, preguntas, x, startY, w, blockH) {
+  const LINE_H  = 4.2;
+  const PAD_TOP = 1.5;
+  const PAD_MID = 1.2;
+  const PAD_BOT = 1.5;
+
   let y = startY;
   preguntas.forEach(([num, pregunta, respuesta]) => {
-    const prefix = num ? `${num}. ` : '';
+    const prefix    = num ? `${num}. ` : '';
+    const fullLabel = prefix + pregunta;
 
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-    doc.text(truncate(doc, prefix + pregunta, w), x, y + blockH * 0.38, { baseline: 'middle' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    const lines = doc.splitTextToSize(fullLabel, w - 2);
 
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-    if (respuesta) doc.text(truncate(doc, String(respuesta), w - 1), x + 1, y + blockH * 0.78, { baseline: 'middle' });
+    const neededH = PAD_TOP + lines.length * LINE_H + PAD_MID + LINE_H + PAD_BOT;
+    const usedH   = Math.max(blockH, neededH);
+
+    lines.forEach((line, i) => {
+      doc.text(line, x + 1, y + PAD_TOP + i * LINE_H + LINE_H / 2, { baseline: 'middle' });
+    });
+
+    const respY = y + PAD_TOP + lines.length * LINE_H + PAD_MID;
+    if (respuesta) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.text(truncate(doc, String(respuesta), w - 2), x + 2, respY + LINE_H / 2, { baseline: 'middle' });
+    }
 
     doc.setLineWidth(0.25);
-    doc.line(x, y + blockH - 0.5, x + w, y + blockH - 0.5);
+    doc.line(x, y + usedH - 0.3, x + w, y + usedH - 0.3);
     doc.setLineWidth(0.3);
 
-    y += blockH;
+    y += usedH;
   });
 }
 
@@ -211,14 +234,11 @@ function drawPage1(doc, info, logoSal, logoIpi) {
   y += 8;
 
   const rH = 6;
-
-  // Datos personales header
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
   drawRect(doc, ML, y, CW, rH, true);
   doc.text('DATOS PERSONALES DEL ESTUDIANTE', PW / 2, y + rH / 2, { align: 'center', baseline: 'middle' });
   y += rH;
 
-  // Encabezados columnas
   const cNombre = CW * 0.33, cApellido = CW * 0.33, cSexo = CW * 0.17, cEdad = CW * 0.17;
   doc.setFontSize(8);
   let xi = ML;
@@ -227,7 +247,6 @@ function drawPage1(doc, info, logoSal, logoIpi) {
   }
   y += rH;
 
-  // Valores
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
   xi = ML;
   for (const [val, w] of [[info.nombre, cNombre], [info.apellido, cApellido], [info.sexo, cSexo], [info.edad, cEdad]]) {
@@ -235,7 +254,6 @@ function drawPage1(doc, info, logoSal, logoIpi) {
   }
   y += rH;
 
-  // Entrevistado / Parentesco
   const cEnt = CW * 0.65, cPar = CW * 0.35;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
   drawRect(doc, ML, y, cEnt, rH); cellText(doc, 'ENTREVISTADO (S)', ML, y, cEnt, rH, { align: 'center' });
@@ -246,7 +264,6 @@ function drawPage1(doc, info, logoSal, logoIpi) {
   drawRect(doc, ML + cEnt, y, cPar, rH); cellText(doc, info.parentesco, ML + cEnt, y, cPar, rH);
   y += rH;
 
-  // Obra salesiana
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
   drawRect(doc, ML, y, CW, rH, true);
   doc.text('Indicar si proviene de alguna obra salesiana', PW / 2, y + rH / 2, { align: 'center', baseline: 'middle' });
@@ -267,7 +284,6 @@ function drawPage1(doc, info, logoSal, logoIpi) {
   });
   y += rH;
 
-  // Nivel académico
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
   drawRect(doc, ML, y, CW, rH, true);
   doc.text('NIVEL DE PREPARACIÓN PADRE, MADRE O TUTOR', PW / 2, y + rH / 2, { align: 'center', baseline: 'middle' });
@@ -279,18 +295,17 @@ function drawPage1(doc, info, logoSal, logoIpi) {
     ['PADRE:', info.nivelPadre, 'LOS PADRES SON:', info.estadoCivil],
   ]) {
     doc.setFont('helvetica', 'bold');
-    drawRect(doc, ML, y, lw, rH);             cellText(doc, l1, ML, y, lw, rH, { align: 'center', pad: 1 });
+    drawRect(doc, ML, y, lw, rH);            cellText(doc, l1, ML, y, lw, rH, { align: 'center', pad: 1 });
     drawRect(doc, ML + lw, y, vw, rH);
-    doc.setFont('helvetica', 'normal');        cellText(doc, v1, ML + lw, y, vw, rH);
+    doc.setFont('helvetica', 'normal');       cellText(doc, v1, ML + lw, y, vw, rH);
     doc.setFont('helvetica', 'bold');
-    drawRect(doc, ML + lw + vw, y, lw2, rH);  cellText(doc, l2, ML + lw + vw, y, lw2, rH, { align: 'center', pad: 1 });
+    drawRect(doc, ML + lw + vw, y, lw2, rH); cellText(doc, l2, ML + lw + vw, y, lw2, rH, { align: 'center', pad: 1 });
     drawRect(doc, ML + lw + vw + lw2, y, vw2, rH);
-    doc.setFont('helvetica', 'normal');        cellText(doc, v2, ML + lw + vw + lw2, y, vw2, rH);
+    doc.setFont('helvetica', 'normal');       cellText(doc, v2, ML + lw + vw + lw2, y, vw2, rH);
     y += rH;
   }
   y += 2;
 
-  // Preguntas 1–9
   const preguntas1 = [
     ['1', '¿Cómo describe la conducta escolar del estudiante?', info.q1],
     ['2', '¿Ha tenido el estudiante algún inconveniente en el colegio? ¿Cómo usted lo ayudó?', info.q2],
@@ -327,12 +342,27 @@ function drawPage2(doc, info) {
     ['',   'OBSERVACIONES:', info.observaciones],
   ];
 
-  const sigsH  = 22;
+  const sigsH   = 22;
   const footerH = 6;
   const qSpace  = PH - MT - MB - sigsH - footerH;
   drawQuestions(doc, preguntas2, ML, MT, CW, qSpace / preguntas2.length);
 
-  let y = MT + qSpace + 2;
+  const LINE_H  = 4.2;
+  const PAD_TOP = 1.5;
+  const PAD_MID = 1.2;
+  const PAD_BOT = 1.5;
+  const blockH  = qSpace / preguntas2.length;
+
+  let realQHeight = 0;
+  preguntas2.forEach(([num, pregunta]) => {
+    const fullLabel    = (num ? `${num}. ` : '') + pregunta;
+    const charsPerLine = Math.floor(CW * 2.2);
+    const lineCount    = Math.ceil(fullLabel.length / charsPerLine);
+    const needed       = PAD_TOP + lineCount * LINE_H + PAD_MID + LINE_H + PAD_BOT;
+    realQHeight       += Math.max(blockH, needed);
+  });
+
+  let y = MT + realQHeight + 2;
   doc.setFontSize(9);
   for (const [label, val] of [['Entrevista realizada por:', info.entrevistador], ['Firma padres:', '']]) {
     doc.setFont('helvetica', 'bold');
@@ -366,11 +396,6 @@ async function buildPdf(data) {
 }
 
 // ─── API pública ──────────────────────────────────────────────────────────────
-
-/**
- * Guarda la entrevista como PDF.
- * @param {object} data - Datos de localStorage (entrevistaStorage.get())
- */
 export async function saveInterviewAsPdf(data = {}) {
   const info     = getInfo(data);
   const fileName = `Entrevista_${info.nombre}_${info.apellido}.pdf`.replace(/\s+/g, '_');
@@ -393,10 +418,6 @@ export async function saveInterviewAsPdf(data = {}) {
   doc.save(fileName);
 }
 
-/**
- * Imprime la entrevista renderizando el PDF generado con jsPDF (NO window.print del navegador).
- * @param {object} data - Datos de localStorage (entrevistaStorage.get())
- */
 export async function printInterviewPdfFormat(data = {}) {
   const doc      = await buildPdf(data);
   const pdfBytes = doc.output('arraybuffer');
@@ -416,8 +437,8 @@ export async function printInterviewPdfFormat(data = {}) {
   const pdfDoc     = await window.pdfjsLib.getDocument({ data: pdfBytes }).promise;
   const totalPages = pdfDoc.numPages;
 
-  const printDiv       = document.createElement('div');
-  printDiv.id          = '__pdf-print-root__';
+  const printDiv         = document.createElement('div');
+  printDiv.id            = '__pdf-print-root__';
   printDiv.style.display = 'none';
 
   for (let p = 1; p <= totalPages; p++) {
@@ -428,8 +449,8 @@ export async function printInterviewPdfFormat(data = {}) {
     canvas.height  = viewport.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
 
-    const img       = document.createElement('img');
-    img.src         = canvas.toDataURL('image/jpeg', 0.95);
+    const img         = document.createElement('img');
+    img.src           = canvas.toDataURL('image/jpeg', 0.95);
     img.style.cssText = 'width:100%;display:block;' + (p > 1 ? 'page-break-before:always;' : '');
     printDiv.appendChild(img);
   }
@@ -451,7 +472,6 @@ export async function printInterviewPdfFormat(data = {}) {
   ].join('\n');
 
   document.body.appendChild(printDiv);
-
   setTimeout(function() {
     window.print();
     setTimeout(function() {

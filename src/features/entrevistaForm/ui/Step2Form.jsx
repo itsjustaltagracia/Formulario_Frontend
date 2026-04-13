@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const P     = "#51626f";
@@ -93,70 +93,102 @@ const RadioCard = ({ name, value, label, selected, onToggle }) => {
   );
 };
 
+function readStorage() {
+  try { const r = window.localStorage.getItem("entrevista"); return r ? JSON.parse(r) : {}; }
+  catch { window.localStorage.removeItem("entrevista"); return {}; }
+}
+
+const ESTADOS_CIVILES = [
+  "Soltero/a","Casado/a","Divorciado/a","Viudo/a",
+  "Unión libre","Separado/a","En trámite de divorcio",
+];
+
 export default function Step2Form() {
   const navigate    = useNavigate();
-  const [saved]     = useState(() => JSON.parse(localStorage.getItem("entrevista") || "{}"));
   const modoLectura = localStorage.getItem("entrevista_modo_lectura") === "true";
 
-  const [estadoCivil,      setEstadoCivil]      = useState(saved.estado_civil      || "");
-  const [ayudaPsic,        setAyudaPsic]        = useState("");
-  const [agresionOcurrida, setAgresionOcurrida] = useState("");
-  const [errores,          setErrores]          = useState([]);
+  // ── Leer storage una sola vez al montar ───────────────────────────────────
+  const s = readStorage();
 
-  const makeToggle = (getter, setter) => (val) => {
+  // ── TODOS los campos como estado controlado ───────────────────────────────
+  const [estadoCivil,          setEstadoCivil]          = useState(s.estado_civil            || "");
+  const [conducta,             setConducta]             = useState(s.conducta                || "");
+  const [inconvenientes,       setInconvenientes]       = useState(s.inconvenientes          || "");
+  const [ayudaPsic,            setAyudaPsic]            = useState(s.ayuda_psic              || "");
+  const [ayudaPsicDetalle,     setAyudaPsicDetalle]     = useState(s.ayuda_psic_detalle      || "");
+  const [zonaVivienda,         setZonaVivienda]         = useState(s.zona_vivienda           || "");
+  const [habitos,              setHabitos]              = useState(s.habitos                 || "");
+  const [actividadesFamilia,   setActividadesFamilia]   = useState(s.actividades_familia     || "");
+  const [tiempoJuntos,         setTiempoJuntos]         = useState(s.tiempo_juntos           || "");
+  const [expectativasCentro,   setExpectativasCentro]   = useState(s.expectativas_centro     || "");
+  const [agresionOcurrida,     setAgresionOcurrida]     = useState(s.agresion_ocurrida       || "");
+  const [agresiones,           setAgresiones]           = useState(s.agresiones              || "");
+
+  const [errores, setErrores] = useState([]);
+
+  const toggle = (val, getter, setter) => {
     if (modoLectura) return;
     setter(getter === val ? "" : val);
     if (errores.length) setErrores([]);
   };
 
-  // ── Validación completa ────────────────────────────────────────────────────
-  const validar = (form) => {
-    const f   = (n) => form.get(n)?.trim() || "";
+  // ── AUTO-GUARDADO ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (modoLectura) return;
+    const existing = readStorage();
+    const data = {
+      ...existing,
+      estado_civil:           estadoCivil,
+      conducta,
+      inconvenientes,
+      ayuda_psic:             ayudaPsic,
+      ayuda_psic_detalle:     ayudaPsic === "Si" ? ayudaPsicDetalle : "",
+      zona_vivienda:          zonaVivienda,
+      habitos,
+      actividades_familia:    actividadesFamilia,
+      tiempo_juntos:          tiempoJuntos,
+      expectativas_centro:    expectativasCentro,
+      agresion_ocurrida:      agresionOcurrida,
+      agresiones:             agresionOcurrida === "Si" ? agresiones : "",
+    };
+    localStorage.setItem("entrevista", JSON.stringify(data));
+  }, [
+    estadoCivil, conducta, inconvenientes, ayudaPsic, ayudaPsicDetalle,
+    zonaVivienda, habitos, actividadesFamilia, tiempoJuntos,
+    expectativasCentro, agresionOcurrida, agresiones,
+  ]);
+
+  // ── Validación ────────────────────────────────────────────────────────────
+  const validar = () => {
     const err = [];
-
-    if (!estadoCivil)              err.push("Estado civil de los padres");
-    if (!f("conducta"))            err.push("Pregunta 1: Conducta escolar del estudiante");
-    if (!f("inconvenientes"))      err.push("Pregunta 2: Inconvenientes en el colegio");
-    if (!ayudaPsic)                err.push("Pregunta 3: Ayuda psicológica (Sí / No)");
-    if (ayudaPsic === "Si" && !f("ayuda_psic_detalle"))
-                                   err.push("Pregunta 3: Especifique la ayuda psicológica recibida");
-    if (!f("zona_vivienda"))       err.push("Pregunta 4: Zona de vivienda");
-    if (!f("habitos"))             err.push("Pregunta 5: Hábitos de estudio");
-    if (!f("actividades_familia")) err.push("Pregunta 6: Actividades en familia");
-    if (!f("tiempo_juntos"))       err.push("Pregunta 7: Tiempo juntos en casa");
-    if (!f("expectativas_centro")) err.push("Pregunta 8: Expectativas del Centro");
-    if (!agresionOcurrida)         err.push("Pregunta 9: Agresiones (Sí / No)");
-    if (agresionOcurrida === "Si" && !f("agresiones"))
-                                   err.push("Pregunta 9: Especifique las agresiones");
-
+    if (!estadoCivil)                              err.push("Estado civil de los padres");
+    if (!conducta.trim())                          err.push("Pregunta 1: Conducta escolar del estudiante");
+    if (!inconvenientes.trim())                    err.push("Pregunta 2: Inconvenientes en el colegio");
+    if (!ayudaPsic)                                err.push("Pregunta 3: Ayuda psicológica (Sí / No)");
+    if (ayudaPsic === "Si" && !ayudaPsicDetalle.trim())
+                                                   err.push("Pregunta 3: Especifique la ayuda psicológica recibida");
+    if (!zonaVivienda.trim())                      err.push("Pregunta 4: Zona de vivienda");
+    if (!habitos.trim())                           err.push("Pregunta 5: Hábitos de estudio");
+    if (!actividadesFamilia.trim())                err.push("Pregunta 6: Actividades en familia");
+    if (!tiempoJuntos.trim())                      err.push("Pregunta 7: Tiempo juntos en casa");
+    if (!expectativasCentro.trim())                err.push("Pregunta 8: Expectativas del Centro");
+    if (!agresionOcurrida)                         err.push("Pregunta 9: Agresiones (Sí / No)");
+    if (agresionOcurrida === "Si" && !agresiones.trim())
+                                                   err.push("Pregunta 9: Especifique las agresiones");
     return err;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (modoLectura) { navigate("/paso3"); return; }
-
-    const form = new FormData(e.target);
-    const err  = validar(form);
-    if (err.length) { setErrores(err); return; }
-
-    const data = {
-      ...saved,
-      ...Object.fromEntries(form.entries()),
-      estado_civil:      estadoCivil,
-      ayuda_psic:        ayudaPsic,
-      agresion_ocurrida: agresionOcurrida,
-    };
-    localStorage.setItem("entrevista", JSON.stringify(data));
+    const err = validar();
+    if (err.length) {
+      setErrores(err);
+      return;
+    }
+    // El useEffect ya guardó todo, solo navegamos
     navigate("/paso3");
   };
-
-  const clearErr = () => { if (errores.length) setErrores([]); };
-
-  const ESTADOS_CIVILES = [
-    "Soltero/a","Casado/a","Divorciado/a","Viudo/a",
-    "Unión libre","Separado/a","En trámite de divorcio",
-  ];
 
   return (
     <FormWrapper>
@@ -198,7 +230,7 @@ export default function Step2Form() {
               {ESTADOS_CIVILES.map(op => (
                 <RadioCard key={op} name="estado_civil" value={op} label={op}
                   selected={estadoCivil}
-                  onToggle={() => makeToggle(estadoCivil, setEstadoCivil)(op)} />
+                  onToggle={() => toggle(op, estadoCivil, setEstadoCivil)} />
               ))}
             </div>
           </div>
@@ -216,9 +248,8 @@ export default function Step2Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   1. ¿Cómo describe la conducta escolar del estudiante? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="conducta" defaultValue={saved.conducta || ""}
-                  placeholder="Describa el comportamiento general..." className={INPUT} rows={3}
-                  onChange={clearErr} />
+                <textarea value={conducta} onChange={e => { setConducta(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Describa el comportamiento general..." className={INPUT} rows={3} />
               </div>
 
               {/* 2 */}
@@ -226,9 +257,8 @@ export default function Step2Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   2. ¿Ha tenido el estudiante algún inconveniente en el colegio? ¿Cómo usted lo ayudó? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="inconvenientes" defaultValue={saved.inconvenientes || ""}
-                  placeholder="Relate situaciones y su intervención..." className={INPUT} rows={3}
-                  onChange={clearErr} />
+                <textarea value={inconvenientes} onChange={e => { setInconvenientes(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Relate situaciones y su intervención..." className={INPUT} rows={3} />
               </div>
 
               {/* 3 */}
@@ -240,13 +270,14 @@ export default function Step2Form() {
                   {[["Si","Sí"],["No","No"]].map(([val, lbl]) => (
                     <RadioCard key={val} name="ayuda_psic" value={val} label={lbl}
                       selected={ayudaPsic}
-                      onToggle={() => makeToggle(ayudaPsic, setAyudaPsic)(val)} />
+                      onToggle={() => toggle(val, ayudaPsic, setAyudaPsic)} />
                   ))}
                 </div>
                 {ayudaPsic === "Si" && (
-                  <textarea name="ayuda_psic_detalle" defaultValue={saved.ayuda_psic_detalle || ""}
+                  <textarea value={ayudaPsicDetalle}
+                    onChange={e => { setAyudaPsicDetalle(e.target.value); if (errores.length) setErrores([]); }}
                     placeholder="Especifique motivo, duración y profesional..."
-                    className={`mt-4 ${INPUT}`} rows={2} onChange={clearErr} />
+                    className={`mt-4 ${INPUT}`} rows={2} />
                 )}
               </div>
 
@@ -255,9 +286,8 @@ export default function Step2Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   4. ¿En qué zona viven de la ciudad? ¿Desde cuándo? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="zona_vivienda" defaultValue={saved.zona_vivienda || ""}
-                  placeholder="Especifique la zona y tiempo de residencia..." className={INPUT} rows={3}
-                  onChange={clearErr} />
+                <textarea value={zonaVivienda} onChange={e => { setZonaVivienda(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Especifique la zona y tiempo de residencia..." className={INPUT} rows={3} />
               </div>
 
               {/* 5 */}
@@ -265,9 +295,8 @@ export default function Step2Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   5. ¿Cuáles hábitos de estudios tiene el niño? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="habitos" defaultValue={saved.habitos || ""}
-                  placeholder="Horarios, lugar de estudio, supervisión..." className={INPUT} rows={3}
-                  onChange={clearErr} />
+                <textarea value={habitos} onChange={e => { setHabitos(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Horarios, lugar de estudio, supervisión..." className={INPUT} rows={3} />
               </div>
 
               {/* 6 y 7 */}
@@ -276,17 +305,15 @@ export default function Step2Form() {
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     6. ¿Cuáles actividades realizan como familia? <span className="text-red-400">*</span>
                   </label>
-                  <textarea name="actividades_familia" defaultValue={saved.actividades_familia || ""}
-                    placeholder="Pasatiempos, paseos o rutinas compartidas..." className={INPUT} rows={2}
-                    onChange={clearErr} />
+                  <textarea value={actividadesFamilia} onChange={e => { setActividadesFamilia(e.target.value); if (errores.length) setErrores([]); }}
+                    placeholder="Pasatiempos, paseos o rutinas compartidas..." className={INPUT} rows={2} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     7. ¿Cuánto tiempo están juntos en la casa? <span className="text-red-400">*</span>
                   </label>
-                  <textarea name="tiempo_juntos" defaultValue={saved.tiempo_juntos || ""}
-                    placeholder="Cantidad de horas de convivencia diaria..." className={INPUT} rows={2}
-                    onChange={clearErr} />
+                  <textarea value={tiempoJuntos} onChange={e => { setTiempoJuntos(e.target.value); if (errores.length) setErrores([]); }}
+                    placeholder="Cantidad de horas de convivencia diaria..." className={INPUT} rows={2} />
                 </div>
               </div>
 
@@ -295,9 +322,8 @@ export default function Step2Form() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   8. ¿Qué espera usted de este Centro? <span className="text-red-400">*</span>
                 </label>
-                <textarea name="expectativas_centro" defaultValue={saved.expectativas_centro || ""}
-                  placeholder="Expectativas académicas y formativas..." className={INPUT} rows={3}
-                  onChange={clearErr} />
+                <textarea value={expectativasCentro} onChange={e => { setExpectativasCentro(e.target.value); if (errores.length) setErrores([]); }}
+                  placeholder="Expectativas académicas y formativas..." className={INPUT} rows={3} />
               </div>
 
               {/* 9 */}
@@ -309,13 +335,14 @@ export default function Step2Form() {
                   {[["Si","Sí"],["No","No"]].map(([val, lbl]) => (
                     <RadioCard key={val} name="agresion_ocurrida" value={val} label={lbl}
                       selected={agresionOcurrida}
-                      onToggle={() => makeToggle(agresionOcurrida, setAgresionOcurrida)(val)} />
+                      onToggle={() => toggle(val, agresionOcurrida, setAgresionOcurrida)} />
                   ))}
                 </div>
                 {agresionOcurrida === "Si" && (
-                  <textarea name="agresiones" defaultValue={saved.agresiones || ""}
+                  <textarea value={agresiones}
+                    onChange={e => { setAgresiones(e.target.value); if (errores.length) setErrores([]); }}
                     placeholder="Especifique tipo de agresión y cómo se resolvió..."
-                    className={`mt-4 ${INPUT}`} rows={3} onChange={clearErr} />
+                    className={`mt-4 ${INPUT}`} rows={3} />
                 )}
               </div>
 
@@ -325,7 +352,8 @@ export default function Step2Form() {
 
         {/* ── Alerta detallada ── */}
         {errores.length > 0 && (
-          <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50"
+            style={{ animation: "fadeIn .25s ease" }}>
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shadow-sm mt-0.5">
                 <span className="material-symbols-outlined text-white text-lg">priority_high</span>
