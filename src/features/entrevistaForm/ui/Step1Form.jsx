@@ -103,7 +103,10 @@ export default function Step1Form() {
 
   const [saved, setSaved]           = useState(() => JSON.parse(localStorage.getItem("entrevista") || "{}"));
   const [modoLectura, setModoLectura] = useState(() => localStorage.getItem("entrevista_modo_lectura") === "true");
+  
+  // Solo fecha (YYYY-MM-DD) - sin hora
   const [currentDate, setCurrentDate] = useState("");
+  
   const [query,       setQuery]       = useState("");
   const [resultados,  setResultados]  = useState([]);
   const [buscando,    setBuscando]    = useState(false);
@@ -130,8 +133,16 @@ export default function Step1Form() {
 
   const clearErrors = () => { if (errores.length) setErrores([]); setErrorApi(""); };
 
-  useEffect(() => { setCurrentDate(new Date().toISOString().split("T")[0]); }, []);
-  useEffect(() => { setMostrarTutorFields(entrevistados.some(e => e.parentesco === "tutor")); }, [entrevistados]);
+  // Solo fecha (sin hora)
+  useEffect(() => {
+    const hoy = new Date();
+    const fechaSolo = hoy.toISOString().split('T')[0]; // Ej: "2026-04-16"
+    setCurrentDate(fechaSolo);
+  }, []);
+
+  useEffect(() => {
+    setMostrarTutorFields(entrevistados.some(e => e.parentesco === "tutor"));
+  }, [entrevistados]);
 
   const handleVinculacionToggle = (valor) => {
     if (modoLectura) return;
@@ -140,7 +151,7 @@ export default function Step1Form() {
     clearErrors();
   };
 
-  // ── Buscador contra el backend ────────────────────────────────────────────
+  // Buscador
   useEffect(() => {
     if (!query.trim()) { setResultados([]); return; }
     const controller = new AbortController();
@@ -155,7 +166,7 @@ export default function Step1Form() {
       } finally {
         setBuscando(false);
       }
-    }, 350); // debounce 350ms
+    }, 350);
     return () => { clearTimeout(delay); controller.abort(); };
   }, [query]);
 
@@ -172,12 +183,10 @@ export default function Step1Form() {
     setSaved(data);
   };
 
-  // ── Cargar entrevista desde resultado del backend ─────────────────────────
   const cargarDesdeBackend = async (entrevistaId, modo) => {
     try {
       const res  = await fetch(`${API}/entrevistas/${entrevistaId}`);
       const data = await res.json();
-      // Normalizar la respuesta del backend al shape que usan los steps
       const flat = normalizarEntrevista(data);
       localStorage.setItem("entrevista", JSON.stringify(flat));
       localStorage.setItem("entrevista_id", entrevistaId);
@@ -195,7 +204,6 @@ export default function Step1Form() {
     }
   };
 
-  // Convierte la respuesta completa del GET /id al shape plano que usa el frontend
   const normalizarEntrevista = (d) => ({
     entrevistaId:   d.id,
     nombres:        d.estudiante?.nombres   || "",
@@ -223,7 +231,7 @@ export default function Step1Form() {
     nivel_tutor:    d.entrevista_nivel_academico_referente?.find(r => r.rol === "tutor")?.cat_nivel_academico?.codigo || "",
     duracion_tutor: d.entrevista_nivel_academico_referente?.find(r => r.rol === "tutor")?.cat_estado_estudio?.codigo || "",
     tipo_tutor:     d.entrevista_nivel_academico_referente?.find(r => r.rol === "tutor")?.tipo_especifico || "",
-    // Step 2
+    // Step 2 y 3 y 4 (se mantienen igual)
     conducta:            d.entrevista_respuesta_principal?.conducta || "",
     inconvenientes:      d.entrevista_respuesta_principal?.inconvenientes || "",
     ayuda_psic:          d.entrevista_respuesta_principal?.ayuda_psicologica ? "Si" : "No",
@@ -235,7 +243,6 @@ export default function Step1Form() {
     expectativas_centro: d.entrevista_respuesta_principal?.expectativas_centro || "",
     agresion_ocurrida:   d.entrevista_respuesta_principal?.agresion_ocurrida ? "Si" : "No",
     agresiones:          d.entrevista_respuesta_principal?.agresiones || "",
-    // Step 3
     convivencia:          d.entrevista_respuesta_principal?.convivencia || "",
     motivos:              d.entrevista_respuesta_principal?.motivos_institucion || "",
     otra_institucion:     d.entrevista_respuesta_principal?.otra_institucion ? "Si" : "No",
@@ -254,7 +261,6 @@ export default function Step1Form() {
       numero: t.numero,
       dueno:  t.cat_dueno_telefono?.nombre || "",
     })),
-    // Step 4
     condicion_salud:            d.entrevista_respuesta_extra?.condicion_salud ? "Si" : "No",
     condicion_salud_detalle:    d.entrevista_respuesta_extra?.condicion_salud_detalle || "",
     medicamento:                d.entrevista_respuesta_extra?.medicamento || "",
@@ -330,7 +336,7 @@ export default function Step1Form() {
 
     const payload = {
       ...Object.fromEntries(form.entries()),
-      fecha:        currentDate,
+      fecha: currentDate,   // ← Solo la fecha (YYYY-MM-DD)
       entrevistados,
       nivel_madre:  madre.nivel, duracion_madre: madre.duracion, tipo_madre: madre.tipo,
       nivel_padre:  padre.nivel, duracion_padre: padre.duracion, tipo_padre: padre.tipo,
@@ -353,7 +359,6 @@ export default function Step1Form() {
       }
       const { entrevista } = await res.json();
 
-      // Guardar el ID y los datos en localStorage para los pasos siguientes
       localStorage.setItem("entrevista_id", entrevista.id);
       localStorage.setItem("entrevista", JSON.stringify({ ...payload, entrevistaId: entrevista.id }));
 
@@ -404,7 +409,7 @@ export default function Step1Form() {
           ))}
         </div>
 
-        {/* Buscador */}
+        {/* Buscador - se mantiene igual */}
         <div className="w-full mb-8">
           {modoLectura && (
             <div className="flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 mb-4">
@@ -435,7 +440,10 @@ export default function Step1Form() {
                 <span className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                   <span className="material-symbols-outlined text-slate-400 text-xl">search</span>
                 </span>
-                <input type="text" value={query} onChange={e => setQuery(e.target.value)}
+                <input 
+                  type="text" 
+                  value={query} 
+                  onChange={e => setQuery(e.target.value)}
                   placeholder="Escriba el nombre o apellido del estudiante..."
                   className="w-full pl-11 pr-11 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none transition-all text-sm text-slate-700"
                 />
@@ -505,9 +513,16 @@ export default function Step1Form() {
           {/* Datos básicos */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Fecha de Entrevista</label>
-              <input name="fecha" value={currentDate} readOnly
-                className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 cursor-default" type="date" />
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Fecha de Entrevista
+              </label>
+              <input 
+                name="fecha" 
+                value={currentDate} 
+                readOnly 
+                className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 cursor-default font-medium" 
+                type="text" 
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Formulario <span className="text-red-400">*</span></label>
@@ -519,7 +534,7 @@ export default function Step1Form() {
             </div>
           </div>
 
-          {/* Datos Personales */}
+          {/* Datos Personales del Estudiante */}
           <div className="pt-6 border-t border-slate-200">
             <div className="flex items-center gap-3 mb-6">
               <span className="material-symbols-outlined text-2xl" style={{ color: P }}>person</span>
@@ -549,7 +564,7 @@ export default function Step1Form() {
             </div>
           </div>
 
-          {/* Entrevistados — idéntico al original */}
+          {/* Entrevistados */}
           <div className="pt-6 border-t border-slate-200">
             <div className="flex items-center gap-3 mb-6">
               <span className="material-symbols-outlined text-2xl" style={{ color: P }}>groups</span>
@@ -562,12 +577,21 @@ export default function Step1Form() {
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       Entrevistado {index + 1} <span className="text-red-400">*</span>
                     </label>
-                    <input value={ent.nombre} onChange={e => handleNombreChange(index, e.target.value)}
-                      placeholder="Nombre de quien asiste" className={INPUT} type="text" />
+                    <input 
+                      value={ent.nombre} 
+                      onChange={e => handleNombreChange(index, e.target.value)}
+                      placeholder="Nombre de quien asiste" 
+                      className={INPUT} 
+                      type="text" 
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Parentesco <span className="text-red-400">*</span></label>
-                    <select value={ent.parentesco} onChange={e => handleParentescoChange(index, e.target.value)} className={SELECT}>
+                    <select 
+                      value={ent.parentesco} 
+                      onChange={e => handleParentescoChange(index, e.target.value)} 
+                      className={SELECT}
+                    >
                       <option value="">Seleccione relación</option>
                       <option value="madre">Madre</option>
                       <option value="padre">Padre</option>
@@ -581,25 +605,37 @@ export default function Step1Form() {
                         <label className="block text-sm font-medium text-slate-700 mb-2">
                           Especifique el parentesco <span className="text-red-400">*</span>
                         </label>
-                        <input value={ent.parentesco_otro} onChange={e => handleOtroChange(index, e.target.value)}
-                          placeholder="Ej: Abuela, Tía, etc." className={INPUT} type="text" />
+                        <input 
+                          value={ent.parentesco_otro} 
+                          onChange={e => handleOtroChange(index, e.target.value)}
+                          placeholder="Ej: Abuela, Tía, etc." 
+                          className={INPUT} 
+                          type="text" 
+                        />
                       </div>
                     )}
                   </div>
                 </div>
                 {entrevistados.length > 1 && (
                   <div className="mt-2 flex justify-end">
-                    <button type="button" onClick={() => removeEntrevistado(index)}
-                      className="flex items-center gap-1 text-sm transition-all hover:opacity-70" style={{ color: "#c1393f" }}>
+                    <button 
+                      type="button" 
+                      onClick={() => removeEntrevistado(index)}
+                      className="flex items-center gap-1 text-sm transition-all hover:opacity-70" 
+                      style={{ color: "#c1393f" }}
+                    >
                       <span className="material-symbols-outlined">delete</span> Eliminar
                     </button>
                   </div>
                 )}
               </div>
             ))}
-            <button type="button" onClick={addEntrevistado}
+            <button 
+              type="button" 
+              onClick={addEntrevistado}
               className="px-6 py-2 rounded-full font-medium flex items-center gap-2 transition-all hover:opacity-80 text-sm text-white"
-              style={{ background: P }}>
+              style={{ background: P }}
+            >
               <span className="text-lg">+</span> Agregar otra persona
             </button>
           </div>
@@ -649,7 +685,9 @@ export default function Step1Form() {
                 { value: "traslado",   label: "Traslado" },
                 { value: "exalumno",   label: "Exalumno" },
               ].map(item => (
-                <div key={item.value} onClick={() => handleVinculacionToggle(item.value)}
+                <div 
+                  key={item.value} 
+                  onClick={() => handleVinculacionToggle(item.value)}
                   className="flex flex-col items-center justify-center gap-1 px-3 py-3 rounded-xl border cursor-pointer transition-all text-center min-h-[85px] select-none"
                   style={{
                     borderColor: vinculacion === item.value ? P : "#cbd5e1",
@@ -685,22 +723,25 @@ export default function Step1Form() {
             {vinculacion && (
               <div className="mt-6">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Especifique la relación</label>
-                <textarea value={especificarVinculacion}
+                <textarea 
+                  value={especificarVinculacion}
                   onChange={e => { setEspecificarVinculacion(e.target.value); clearErrors(); }}
-                  placeholder="Detalles de la vinculación..." className={INPUT} rows={3} />
+                  placeholder="Detalles de la vinculación..." 
+                  className={INPUT} 
+                  rows={3} 
+                />
               </div>
             )}
           </div>
         </fieldset>
 
-        {/* Error de API */}
+        {/* Mensajes de error */}
         {errorApi && (
           <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50">
             <p className="text-red-800 text-sm font-semibold text-center">{errorApi}</p>
           </div>
         )}
 
-        {/* Errores de validación */}
         {errores.length > 0 && (
           <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50">
             <div className="flex items-start gap-3">

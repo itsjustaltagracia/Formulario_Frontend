@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 // ── IMPORTACIÓN DE LOGOS ──
-import logoSalesianos from "../../assets/logo-salesianos.png"; 
-import logoSalesiano  from "../../assets/logo-salesiano.png"; 
+import logoSalesianos from "../../assets/logo-salesianos.png";
+import logoSalesiano from "../../assets/logo-salesiano.png";
+
+const API = import.meta.env.VITE_API_URL ?? "/api";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  
+
   const [usuario, setUsuario] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [verContrasena, setVerContrasena] = useState(false);
@@ -15,9 +17,9 @@ export default function LoginPage() {
   const [mostrarExito, setMostrarExito] = useState(false);
   const [error, setError] = useState("");
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    
+
     if (!usuario.trim() || !contrasena.trim()) {
       setError("Por favor, complete todos los campos para continuar.");
       return;
@@ -26,33 +28,70 @@ export default function LoginPage() {
     setError("");
     setCargando(true);
 
-    setTimeout(() => {
-      setCargando(false);
+    try {
+      const response = await fetch(`${API}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          // CAMBIO CLAVE: Usamos las etiquetas que el backend espera recibir
+          username: usuario.trim(), 
+          password: contrasena,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Ahora el error 401 del backend se capturará aquí correctamente
+        throw new Error(data.message || "Usuario o contraseña incorrectos");
+      }
+
+      // Guardar token y usuario en localStorage
+      localStorage.setItem("token", data.token);
+      if (data.usuario) {
+        localStorage.setItem("usuario", JSON.stringify(data.usuario));
+      }
+
+      // Mostrar mensaje de éxito
       setMostrarExito(true);
 
+      // Redirigir después de 2 segundos
       setTimeout(() => {
-        navigate("/"); 
+        navigate("/");
       }, 2000);
-    }, 1500);
-  };
 
+    } catch (err) {
+      setError(err.message || "Error al iniciar sesión. Inténtelo de nuevo.");
+    } finally {
+      setCargando(false);
+    }
+  };
+  
   const handleInputChange = (setter) => (e) => {
     setter(e.target.value);
     if (error) setError("");
   };
 
   return (
-    <main 
-      style={{ fontFamily: "'Work Sans', sans-serif", height: "100vh" }}
-      className="w-full flex flex-col md:flex-row overflow-hidden bg-white relative"
-    >
-      {/* Notificación de éxito */}
+    <main style={{ fontFamily: "'Work Sans', sans-serif", height: "100vh" }} className="w-full flex flex-col md:flex-row overflow-hidden bg-white relative">
+      
+      {/* Notificación de éxito (se mantiene igual) */}
       {mostrarExito && (
-        <div style={{
-          position: "fixed", bottom: "30px", right: "30px", zIndex: 100,
-          background: "#490008", color: "white", padding: "16px 24px",
-          display: "flex", alignItems: "center", gap: "12px",
-          boxShadow: "0 10px 25px rgba(0,0,0,0.1)", animation: "slideIn 0.5s ease forwards"
+        <div style={{ 
+          position: "fixed", 
+          bottom: "30px", 
+          right: "30px", 
+          zIndex: 100, 
+          background: "#490008", 
+          color: "white", 
+          padding: "16px 24px", 
+          display: "flex", 
+          alignItems: "center", 
+          gap: "12px", 
+          boxShadow: "0 10px 25px rgba(0,0,0,0.1)", 
+          animation: "slideIn 0.5s ease forwards" 
         }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5c9b0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
@@ -65,85 +104,67 @@ export default function LoginPage() {
       )}
 
       {/* LADO IZQUIERDO: FORMULARIO */}
-      <section className="w-full md:w-[50%] xl:w-[45%] h-full flex flex-col bg-white px-8 lg:px-24 z-20"
-        style={{ boxSizing: 'border-box' }}
-      >
+      <section className="w-full md:w-[50%] xl:w-[45%] h-full flex flex-col bg-white px-8 lg:px-24 z-20" style={{ boxSizing: 'border-box' }}>
         <div className="flex-grow flex flex-col justify-center">
-          
-          {/* Header con Logos y Título */}
-          <header className="text-center mb-12">
 
-            {/* Dos logos lado a lado con separador */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "24px",
-              marginBottom: "30px",
-            }}>
-              <img 
-                src={logoSalesianos} 
-                alt="Logo Salesianos Santiago" 
-                style={{ width: "80px", height: "auto", objectFit: "contain" }}
-              />
+          {/* Header con Logos y Título (exactamente igual) */}
+          <header className="text-center mb-12">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "24px", marginBottom: "30px" }}>
+              <img src={logoSalesianos} alt="Logo Salesianos Santiago" style={{ width: "80px", height: "auto", objectFit: "contain" }} />
               <div style={{ width: "1.5px", height: "60px", background: "#e1e3e4", flexShrink: 0 }} />
-              <img 
-                src={logoSalesiano} 
-                alt="Logo Salesiano" 
-                style={{ width: "80px", height: "auto", objectFit: "contain" }}
-              />
+              <img src={logoSalesiano} alt="Logo Salesiano" style={{ width: "80px", height: "auto", objectFit: "contain" }} />
             </div>
 
-            <h1 style={{
-              fontFamily: "'Playfair Display', serif",
-              fontSize: "clamp(1.8rem, 5vw, 3.2rem)",
-              fontWeight: 400,
-              color: "#490008",
-              lineHeight: 1.2,
-              whiteSpace: "nowrap",
-              textAlign: "center"
+            <h1 style={{ 
+              fontFamily: "'Playfair Display', serif", 
+              fontSize: "clamp(1.8rem, 5vw, 3.2rem)", 
+              fontWeight: 400, 
+              color: "#490008", 
+              lineHeight: 1.2, 
+              whiteSpace: "nowrap", 
+              textAlign: "center" 
             }}>
               Bienvenidos a FENI
             </h1>
-            
-            <p style={{
-              fontSize: "clamp(7px, 1.1vw, 10.5px)",
-              fontWeight: 600,
-              letterSpacing: "clamp(0.1em, 0.4vw, 0.25em)",
-              color: "#8e9599",
-              textTransform: "uppercase",
-              marginTop: "12px",
-              whiteSpace: "nowrap",
+
+            <p style={{ 
+              fontSize: "clamp(7px, 1.1vw, 10.5px)", 
+              fontWeight: 600, 
+              letterSpacing: "clamp(0.1em, 0.4vw, 0.25em)", 
+              color: "#8e9599", 
+              textTransform: "uppercase", 
+              marginTop: "12px", 
+              whiteSpace: "nowrap" 
             }}>
               Formulario de Entrevistas Para Nuevo Ingreso
             </p>
           </header>
 
           {/* Formulario */}
-          <form onSubmit={handleLogin} style={{ 
-            display: "flex", 
-            flexDirection: "column", 
-            gap: "35px",
-            width: "100%",
-            maxWidth: "400px",
-            margin: "0 auto"
-          }}>
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "35px", width: "100%", maxWidth: "400px", margin: "0 auto" }}>
+            
             {/* Usuario */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <label style={{ fontSize: "10.5px", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#490008" }}>
                 IDENTIFICACIÓN DE USUARIO
               </label>
-              <input
-                type="text"
-                placeholder="nombre.usuario"
-                value={usuario}
+              <input 
+                type="text" 
+                placeholder="nombre.usuario" 
+                value={usuario} 
                 onChange={handleInputChange(setUsuario)}
-                style={{
-                  width: "100%", background: "transparent", border: "none",
-                  borderBottom: "1.5px solid #e1e3e4", padding: "8px 0px 10px 0px",
-                  fontSize: "15px", fontFamily: "'Work Sans', sans-serif",
-                  fontWeight: 400, color: "#171c1e", outline: "none",
-                }}
+                style={{ 
+                  width: "100%", 
+                  background: "transparent", 
+                  border: "none", 
+                  borderBottom: "1.5px solid #e1e3e4", 
+                  padding: "8px 0px 10px 0px", 
+                  fontSize: "15px", 
+                  fontFamily: "'Work Sans', sans-serif", 
+                  fontWeight: 400, 
+                  color: "#171c1e", 
+                  outline: "none" 
+                }} 
               />
             </div>
 
@@ -153,24 +174,35 @@ export default function LoginPage() {
                 CLAVE DE ACCESO
               </label>
               <div style={{ position: "relative" }}>
-                <input
-                  type={verContrasena ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={contrasena}
+                <input 
+                  type={verContrasena ? "text" : "password"} 
+                  placeholder="••••••••" 
+                  value={contrasena} 
                   onChange={handleInputChange(setContrasena)}
-                  style={{
-                    width: "100%", background: "transparent", border: "none",
-                    borderBottom: "1.5px solid #e1e3e4", padding: "8px 35px 10px 0px",
-                    fontSize: "15px", outline: "none"
-                  }}
+                  style={{ 
+                    width: "100%", 
+                    background: "transparent", 
+                    border: "none", 
+                    borderBottom: "1.5px solid #e1e3e4", 
+                    padding: "8px 35px 10px 0px", 
+                    fontSize: "15px", 
+                    outline: "none" 
+                  }} 
                 />
                 <button 
-                  type="button"
+                  type="button" 
                   onClick={() => setVerContrasena(!verContrasena)}
-                  style={{
-                    position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)",
-                    background: "none", border: "none", cursor: "pointer", color: "#490008",
-                    display: "flex", alignItems: "center"
+                  style={{ 
+                    position: "absolute", 
+                    right: 0, 
+                    top: "50%", 
+                    transform: "translateY(-50%)", 
+                    background: "none", 
+                    border: "none", 
+                    cursor: "pointer", 
+                    color: "#490008", 
+                    display: "flex", 
+                    alignItems: "center" 
                   }}
                 >
                   {verContrasena ? (
@@ -190,34 +222,34 @@ export default function LoginPage() {
 
             {/* Botón + Mensaje de Error */}
             <div style={{ paddingTop: "6px" }}>
-              <button
-                type="submit"
+              <button 
+                type="submit" 
                 disabled={cargando}
-                style={{
-                  width: "100%",
-                  background: cargando ? "#70787d" : "#490008",
-                  color: "#fff",
-                  border: "none",
-                  padding: "16px",
-                  fontSize: "11.5px",
-                  fontWeight: 700,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  cursor: cargando ? "not-allowed" : "pointer",
-                  transition: "all 0.3s ease"
+                style={{ 
+                  width: "100%", 
+                  background: cargando ? "#70787d" : "#490008", 
+                  color: "#fff", 
+                  border: "none", 
+                  padding: "16px", 
+                  fontSize: "11.5px", 
+                  fontWeight: 700, 
+                  letterSpacing: "0.18em", 
+                  textTransform: "uppercase", 
+                  cursor: cargando ? "not-allowed" : "pointer", 
+                  transition: "all 0.3s ease" 
                 }}
               >
                 {cargando ? "Cargando..." : "INICIAR SESIÓN"}
               </button>
 
               {error && (
-                <p style={{
-                  color: "#490008",
-                  fontSize: "10.5px",
-                  fontWeight: 600,
-                  textAlign: "center",
-                  marginTop: "12px",
-                  letterSpacing: "0.02em"
+                <p style={{ 
+                  color: "#490008", 
+                  fontSize: "10.5px", 
+                  fontWeight: 600, 
+                  textAlign: "center", 
+                  marginTop: "12px", 
+                  letterSpacing: "0.02em" 
                 }}>
                   {error}
                 </p>
@@ -228,29 +260,16 @@ export default function LoginPage() {
 
         {/* Footer */}
         <footer style={{ paddingBottom: "25px", textAlign: "center" }}>
-          <p style={{
-            fontSize: "8.5px", fontWeight: 500,
-            letterSpacing: "0.08em", color: "#99a0a3", textTransform: "uppercase"
-          }}>
+          <p style={{ fontSize: "8.5px", fontWeight: 500, letterSpacing: "0.08em", color: "#99a0a3", textTransform: "uppercase" }}>
             © 2026 IPISA — SISTEMA DE ENTREVISTA FAMILIAR
           </p>
         </footer>
       </section>
 
-      {/* LADO DERECHO: ILUSTRACIÓN */}
+      {/* LADO DERECHO: ILUSTRACIÓN (se mantiene igual) */}
       <section className="hidden md:flex flex-grow h-full relative overflow-hidden bg-[#f5c9b0]">
-        <div style={{
-          position: "absolute", inset: "0 auto 0 0",
-          width: "1.5px", zIndex: 10,
-          background: "#e1e3e4",
-        }} />
-
-        <svg
-          viewBox="0 0 800 900"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          preserveAspectRatio="xMidYMid slice"
-        >
+        <div style={{ position: "absolute", inset: "0 auto 0 0", width: "1.5px", zIndex: 10, background: "#e1e3e4" }} />
+        <svg viewBox="0 0 800 900" xmlns="http://www.w3.org/2000/svg" style={{ width: "100%", height: "100%", objectFit: "cover" }} preserveAspectRatio="xMidYMid slice">
           <rect width="800" height="900" fill="#f5c9b0" />
           <circle cx="500" cy="280" r="110" fill="#f0a882" opacity="0.7" />
           <circle cx="500" cy="280" r="75" fill="#e8896a" opacity="0.6" />
