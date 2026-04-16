@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { saveInterviewAsPdf, printInterviewPdfFormat } from "../../pdfExport/lib/index";
 
-// ── Constantes de estilo ───────────────────────────────────────────────────────
+const API   = import.meta.env.VITE_API_URL ?? "/api";
 const P     = "#51626f";
 const FOCUS = `focus:border-[#51626f] focus:ring-2 focus:ring-[#51626f]/10`;
 const INPUT = `w-full px-4 py-3 rounded-lg border border-slate-300 outline-none transition-all ${FOCUS}`;
 
-// ── Labels ─────────────────────────────────────────────────────────────────────
 const RequiredLabel = ({ children, className = "" }) => (
   <label className={`block text-sm font-medium text-slate-700 mb-4 ${className}`}>
     {children} <span className="text-red-500 ml-0.5">*</span>
@@ -19,7 +18,6 @@ const OptionalLabel = ({ children, className = "" }) => (
   </label>
 );
 
-// ── FormWrapper ────────────────────────────────────────────────────────────────
 const FormWrapper = ({ children }) => (
   <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 flex justify-center items-start">
     <div className="w-full max-w-4xl bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
@@ -28,7 +26,6 @@ const FormWrapper = ({ children }) => (
   </div>
 );
 
-// ── Stepper ────────────────────────────────────────────────────────────────────
 const Stepper = ({ pasoActual }) => {
   const pasos = [
     { n: 1, label: "Datos Básicos" },
@@ -67,7 +64,6 @@ const Stepper = ({ pasoActual }) => {
   );
 };
 
-// ── RadioCard ──────────────────────────────────────────────────────────────────
 const RadioCard = ({ name, value, label, selected, onToggle }) => {
   const sel = selected === value;
   return (
@@ -86,13 +82,11 @@ const RadioCard = ({ name, value, label, selected, onToggle }) => {
       }}>
         {sel && <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: P }} />}
       </div>
-      {sel && <input type="hidden" name={name} value={value} />}
       <span className="text-sm font-semibold" style={{ color: sel ? P : "#475569" }}>{label}</span>
     </div>
   );
 };
 
-// ── StyledSelect ──────────────────────────────────────────────────────────────
 const StyledSelect = ({ name, value, onChange, children, className = "" }) => (
   <div className="relative">
     <select name={name} value={value} onChange={onChange}
@@ -103,7 +97,6 @@ const StyledSelect = ({ name, value, onChange, children, className = "" }) => (
   </div>
 );
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
 function readStorage() {
   try { const r = window.localStorage.getItem("entrevista"); return r ? JSON.parse(r) : {}; }
   catch { window.localStorage.removeItem("entrevista"); return {}; }
@@ -119,7 +112,6 @@ const TIPOS_HERMANO = [
 ];
 const mostrarParentesco = (tipo) => tipo === "pariente exalumno" || tipo === "pariente";
 
-// ══════════════════════════════════════════════════════════════════════════════
 export default function Step4Form() {
   const navigate    = useNavigate();
   const formRef     = useRef(null);
@@ -129,11 +121,10 @@ export default function Step4Form() {
   const [showPrintConfirm, setShowPrintConfirm] = useState(false);
   const [isSaving,         setIsSaving]         = useState(false);
   const [alertas,          setAlertas]          = useState([]);
+  const [errorApi,         setErrorApi]         = useState("");   // ← nuevo
 
-  // ── Leer storage una sola vez al montar ───────────────────────────────────
   const s = readStorage();
 
-  // ── TODOS los campos como estado controlado ───────────────────────────────
   const [condicionSalud,        setCondicionSalud]        = useState(s.condicion_salud            || "");
   const [condicionSaludDetalle, setCondicionSaludDetalle] = useState(s.condicion_salud_detalle    || "");
   const [medicamento,           setMedicamento]           = useState(s.medicamento                || "");
@@ -156,7 +147,6 @@ export default function Step4Form() {
   const [valoracion,            setValoracion]            = useState(s.valoracion_familia         || "");
   const [obsInternas,           setObsInternas]           = useState(s.observaciones_internas     || "");
 
-  // ── Hermanos ──────────────────────────────────────────────────────────────
   const initHermanos = s.hermanos?.length > 0
     ? s.hermanos
     : s.hermanos_nombre
@@ -168,17 +158,16 @@ export default function Step4Form() {
   const removeHermano = (i) => setHermanos(h => h.filter((_, j) => j !== i));
   const updateHermano = (i, field, val) => setHermanos(h => { const a = [...h]; a[i] = { ...a[i], [field]: val }; return a; });
 
-  // ── Toggle helper ─────────────────────────────────────────────────────────
   const toggle = (val, getter, setter) => {
     if (modoLectura) return;
     setter(getter === val ? "" : val);
   };
 
-  // ── AUTO-GUARDADO ─────────────────────────────────────────────────────────
+  // Auto-guardado
   useEffect(() => {
     if (modoLectura) return;
     const existing = readStorage();
-    const data = {
+    localStorage.setItem("entrevista", JSON.stringify({
       ...existing,
       condicion_salud:            condicionSalud,
       condicion_salud_detalle:    condicionSalud === "Si" ? condicionSaludDetalle : "",
@@ -201,8 +190,7 @@ export default function Step4Form() {
       hermanos:                   mostrarHermanos ? hermanos : [],
       valoracion_familia:         valoracion,
       observaciones_internas:     obsInternas,
-    };
-    localStorage.setItem("entrevista", JSON.stringify(data));
+    }));
   }, [
     condicionSalud, condicionSaludDetalle, medicamento, medicamentoDetalle,
     supervisorExtra, supervisorOtroEsp, padresFuera, padresFueraDetalle,
@@ -211,37 +199,81 @@ export default function Step4Form() {
     mostrarHermanos, hermanosNo, hermanos, valoracion, obsInternas,
   ]);
 
-  // ── Validación ────────────────────────────────────────────────────────────
   const validar = () => {
     const errores = [];
-    if (!condicionSalud)              errores.push("Pregunta 20: Condición de salud del hijo");
-    if (!medicamento)                 errores.push("Pregunta 21: Medicamento fijo o regular");
-    if (!supervisorExtra)             errores.push("Pregunta 22: Supervisor extraescolar");
-    if (!padresFuera)                 errores.push("Pregunta 23: Padres fuera del país");
-    if (!tipoCasa)                    errores.push("Pregunta 24: Tipo de vivienda");
-    if (!estadoPadres)                errores.push("Pregunta 25: Estado de vida de los padres");
-    if (!convivePadres)               errores.push("Pregunta 26: Con quién convive el estudiante");
-    if (!figurasFamiliares)           errores.push("Pregunta 27: Figuras familiares en el núcleo");
-    if (!mostrarHermanos && !hermanosNo) errores.push("Pregunta 28: Hermanos o exalumnos en IPISA");
-    if (!valoracion)                  errores.push("Pregunta 29: Valoración de la familia");
+    if (!condicionSalud)                     errores.push("Pregunta 20: Condición de salud del hijo");
+    if (!medicamento)                        errores.push("Pregunta 21: Medicamento fijo o regular");
+    if (!supervisorExtra)                    errores.push("Pregunta 22: Supervisor extraescolar");
+    if (!padresFuera)                        errores.push("Pregunta 23: Padres fuera del país");
+    if (!tipoCasa)                           errores.push("Pregunta 24: Tipo de vivienda");
+    if (!estadoPadres)                       errores.push("Pregunta 25: Estado de vida de los padres");
+    if (!convivePadres)                      errores.push("Pregunta 26: Con quién convive el estudiante");
+    if (!figurasFamiliares)                  errores.push("Pregunta 27: Figuras familiares en el núcleo");
+    if (!mostrarHermanos && !hermanosNo)     errores.push("Pregunta 28: Hermanos o exalumnos en IPISA");
+    if (!valoracion)                         errores.push("Pregunta 29: Valoración de la familia");
     return errores;
   };
 
-  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     if (modoLectura) return;
+
     const errores = validar();
     if (errores.length > 0) {
       setAlertas(errores);
       setTimeout(() => document.getElementById("alertas-validacion")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
       return;
     }
+
+    // ── igual que Step2/Step3: leer el ID y llamar al backend ────────────
+    const entrevistaId = localStorage.getItem("entrevista_id");
+    if (!entrevistaId) {
+      setErrorApi("No se encontró el ID de la entrevista. Vuelva al paso 1.");
+      setAlertas([]);
+      return;
+    }
+
     setAlertas([]);
+    setErrorApi("");
     setIsSaving(true);
-    await new Promise(r => setTimeout(r, 1500));
-    setIsSaving(false);
-    setShowSuccess(true);
+    try {
+      const res = await fetch(`${API}/entrevistas/${entrevistaId}/step4`, {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          condicion_salud:            condicionSalud,
+          condicion_salud_detalle:    condicionSalud === "Si" ? condicionSaludDetalle : "",
+          medicamento,
+          medicamento_detalle:        (medicamento === "Si" || medicamento === "Tal vez") ? medicamentoDetalle : "",
+          supervisor_extraescolar:    supervisorExtra,
+          supervisor_otro_especifico: supervisorExtra === "Otro" ? supervisorOtroEsp : "",
+          padres_fuera:               padresFuera,
+          padres_fuera_detalle:       padresFuera === "Si" ? padresFueraDetalle : "",
+          pais_madre:                 padresFuera === "Si" ? paisMadre : "",
+          pais_madre_otro:            paisMadre === "Otro" ? paisMadreOtro : "",
+          pais_padre:                 padresFuera === "Si" ? paisPadre : "",
+          pais_padre_otro:            paisPadre === "Otro" ? paisPadreOtro : "",
+          observaciones_padres_fuera: padresFuera === "Si" ? obsPadresFuera : "",
+          tipo_casa:                  tipoCasa,
+          estado_padres:              estadoPadres,
+          convive_padres:             convivePadres,
+          figuras_familiares:         figurasFamiliares,
+          hermanos_exalumnos_si_no:   mostrarHermanos ? "Si" : "No",
+          hermanos:                   mostrarHermanos ? hermanos : [],
+          valoracion_familia:         valoracion,
+          observaciones_internas:     obsInternas || null,
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.error || "Error al guardar");
+      }
+      setShowSuccess(true);
+    } catch (err) {
+      setErrorApi(err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getCurrentData = () => JSON.parse(localStorage.getItem("entrevista") || "{}");
@@ -249,15 +281,14 @@ export default function Step4Form() {
   const handlePrint    = () => setShowPrintConfirm(true);
   const confirmPrint   = () => { setShowPrintConfirm(false); printInterviewPdfFormat(getCurrentData()); };
 
-  // ── Al dar OK: limpiar storage y volver al inicio con form vacío ──────────
   const closeSuccess = () => {
     setShowSuccess(false);
     localStorage.removeItem("entrevista");
+    localStorage.removeItem("entrevista_id");
     localStorage.removeItem("entrevista_modo_lectura");
     navigate("/");
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <FormWrapper>
       <style>{`
@@ -479,7 +510,6 @@ export default function Step4Form() {
                             </button>
                           )}
                         </div>
-
                         <div className="mb-4">
                           <label className="block text-sm font-medium text-slate-700 mb-3">Tipo</label>
                           <div className="flex flex-wrap gap-3">
@@ -503,7 +533,6 @@ export default function Step4Form() {
                             ))}
                           </div>
                         </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre completo</label>
@@ -574,6 +603,13 @@ export default function Step4Form() {
             </div>
           </div>
         </fieldset>
+
+        {/* Error de API */}
+        {errorApi && (
+          <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50">
+            <p className="text-red-800 text-sm font-semibold text-center">{errorApi}</p>
+          </div>
+        )}
 
         {/* Alertas de validación */}
         {alertas.length > 0 && (

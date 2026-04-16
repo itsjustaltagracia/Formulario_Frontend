@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API   = import.meta.env.VITE_API_URL ?? "/api";
 const P     = "#51626f";
 const FOCUS = `focus:border-[#51626f] focus:ring-2 focus:ring-[#51626f]/10`;
 const INPUT = `w-full px-4 py-3 rounded-lg border border-slate-300 outline-none transition-all ${FOCUS}`;
@@ -105,31 +106,27 @@ export default function Step3Form() {
   const navigate    = useNavigate();
   const modoLectura = localStorage.getItem("entrevista_modo_lectura") === "true";
 
-  // ── Leer storage una sola vez al montar ───────────────────────────────────
   const s = readStorage();
 
-  // ── TODOS los campos como estado controlado ───────────────────────────────
-  const [convivencia,          setConvivencia]          = useState(s.convivencia              || "");
-  const [motivos,              setMotivos]              = useState(s.motivos                  || "");
-  const [otraInstitucion,      setOtraInstitucion]      = useState(s.otra_institucion         || "");
-  const [dificultades,         setDificultades]         = useState(s.dificultades             || "");
-  const [estudianteDescr,      setEstudianteDescr]      = useState(s.estudiante_descr         || "");
-  const [repetidoCurso,        setRepetidoCurso]        = useState(s.repetido_curso           || "");
-  const [repetido,             setRepetido]             = useState(s.repetido                 || "");
-  const [alfabetizacion,       setAlfabetizacion]       = useState(s.alfabetizacion           || "");
-  const [alfabetizacionDetalle,setAlfabetizacionDetalle]= useState(s.alfabetizacion_detalle   || "");
-  const [motivacion,           setMotivacion]           = useState(s.motivacion               || "");
-  const [ingresoReal,          setIngresoReal]          = useState(s.ingreso_real             || "");
-  const [aporteMensual,        setAporteMensual]        = useState(s.aporte_mensual           || "");
-  const [observaciones,        setObservaciones]        = useState(s.observaciones            || "");
+  const [convivencia,           setConvivencia]           = useState(s.convivencia              || "");
+  const [motivos,               setMotivos]               = useState(s.motivos                  || "");
+  const [otraInstitucion,       setOtraInstitucion]       = useState(s.otra_institucion         || "");
+  const [dificultades,          setDificultades]          = useState(s.dificultades             || "");
+  const [estudianteDescr,       setEstudianteDescr]       = useState(s.estudiante_descr         || "");
+  const [repetidoCurso,         setRepetidoCurso]         = useState(s.repetido_curso           || "");
+  const [repetido,              setRepetido]              = useState(s.repetido                 || "");
+  const [alfabetizacion,        setAlfabetizacion]        = useState(s.alfabetizacion           || "");
+  const [alfabetizacionDetalle, setAlfabetizacionDetalle] = useState(s.alfabetizacion_detalle   || "");
+  const [motivacion,            setMotivacion]            = useState(s.motivacion               || "");
+  const [ingresoReal,           setIngresoReal]           = useState(s.ingreso_real             || "");
+  const [aporteMensual,         setAporteMensual]         = useState(s.aporte_mensual           || "");
+  const [observaciones,         setObservaciones]         = useState(s.observaciones            || "");
 
-  // ── Entrevistador ─────────────────────────────────────────────────────────
   const savedEnt = s.entrevistador || "";
   const esOtro   = savedEnt !== "" && !LISTA_ENTREVISTADORES.includes(savedEnt);
   const [entrevistadorSelect, setEntrevistadorSelect] = useState(esOtro ? "otro" : savedEnt);
   const [entrevistadorOtro,   setEntrevistadorOtro]   = useState(esOtro ? savedEnt : "");
 
-  // ── Teléfonos ─────────────────────────────────────────────────────────────
   const initTels = () => {
     if (s.telefonos?.length > 0) return s.telefonos;
     if (s.telefono) return [{ numero: s.telefono, dueno: s.telefono_dueno || "" }];
@@ -137,13 +134,9 @@ export default function Step3Form() {
   };
   const [telefonos, setTelefonos] = useState(initTels);
 
-  const addTelefono    = () => { if (telefonos.length < 3) setTelefonos([...telefonos, { ...TELEFONO_VACIO }]); };
-  const removeTelefono = (i) => { if (telefonos.length > 1) setTelefonos(telefonos.filter((_, j) => j !== i)); };
-  const updateTel      = (i, field, val) => {
-    const arr = [...telefonos]; arr[i] = { ...arr[i], [field]: val }; setTelefonos(arr);
-  };
-
-  const [errores, setErrores] = useState([]);
+  const [errores,  setErrores]  = useState([]);
+  const [loading,  setLoading]  = useState(false);   // ← nuevo
+  const [errorApi, setErrorApi] = useState("");       // ← nuevo
 
   const toggle = (val, getter, setter) => {
     if (modoLectura) return;
@@ -151,30 +144,35 @@ export default function Step3Form() {
     if (errores.length) setErrores([]);
   };
 
-  // ── AUTO-GUARDADO ─────────────────────────────────────────────────────────
+  const addTelefono    = () => { if (telefonos.length < 3) setTelefonos([...telefonos, { ...TELEFONO_VACIO }]); };
+  const removeTelefono = (i) => { if (telefonos.length > 1) setTelefonos(telefonos.filter((_, j) => j !== i)); };
+  const updateTel      = (i, field, val) => {
+    const arr = [...telefonos]; arr[i] = { ...arr[i], [field]: val }; setTelefonos(arr);
+  };
+
+  // Auto-guardado
   useEffect(() => {
     if (modoLectura) return;
     const existing = readStorage();
     const entFinal = entrevistadorSelect === "otro" ? entrevistadorOtro.trim() : entrevistadorSelect;
-    const data = {
+    localStorage.setItem("entrevista", JSON.stringify({
       ...existing,
       convivencia,
       motivos,
-      otra_institucion:        otraInstitucion,
-      dificultades:            otraInstitucion === "Si" ? dificultades : "",
-      estudiante_descr:        estudianteDescr,
-      repetido_curso:          repetidoCurso,
-      repetido:                repetidoCurso === "Si" ? repetido : "",
+      otra_institucion:       otraInstitucion,
+      dificultades:           otraInstitucion === "Si" ? dificultades : "",
+      estudiante_descr:       estudianteDescr,
+      repetido_curso:         repetidoCurso,
+      repetido:               repetidoCurso === "Si" ? repetido : "",
       alfabetizacion,
-      alfabetizacion_detalle:  alfabetizacion === "Si" ? alfabetizacionDetalle : "",
+      alfabetizacion_detalle: alfabetizacion === "Si" ? alfabetizacionDetalle : "",
       motivacion,
-      ingreso_real:            ingresoReal,
-      aporte_mensual:          aporteMensual,
+      ingreso_real:           ingresoReal,
+      aporte_mensual:         aporteMensual,
       telefonos,
       observaciones,
-      entrevistador:           entFinal,
-    };
-    localStorage.setItem("entrevista", JSON.stringify(data));
+      entrevistador:          entFinal,
+    }));
   }, [
     convivencia, motivos, otraInstitucion, dificultades, estudianteDescr,
     repetidoCurso, repetido, alfabetizacion, alfabetizacionDetalle,
@@ -182,39 +180,79 @@ export default function Step3Form() {
     observaciones, entrevistadorSelect, entrevistadorOtro,
   ]);
 
-  // ── Validación ────────────────────────────────────────────────────────────
   const validar = () => {
     const err = [];
-    if (!convivencia.trim())                                    err.push("Pregunta 10: ¿Con quién vive el estudiante?");
-    if (!motivos.trim())                                        err.push("Pregunta 11: Motivos para elegir la institución");
-    if (!otraInstitucion)                                       err.push("Pregunta 12: ¿Viene de otra institución? (Sí / No)");
-    if (otraInstitucion === "Si" && !dificultades.trim())       err.push("Pregunta 12: Especifique las dificultades");
-    if (!estudianteDescr.trim())                                err.push("Pregunta 13: Descripción del estudiante");
-    if (!repetidoCurso)                                         err.push("Pregunta 14: ¿Ha repetido algún curso? (Sí / No)");
-    if (repetidoCurso === "Si" && !repetido.trim())             err.push("Pregunta 14: Especifique el curso y motivo");
-    if (!alfabetizacion)                                        err.push("Pregunta 15: Problemas de alfabetización (Sí / No)");
-    if (alfabetizacion === "Si" && !alfabetizacionDetalle.trim())
-                                                                err.push("Pregunta 15: Especifique los problemas de alfabetización");
-    if (!motivacion.trim())                                     err.push("Pregunta 16: Motivación del estudiante");
-    if (!ingresoReal.trim())                                    err.push("Pregunta 17: Ingreso real de la familia");
-    if (!aporteMensual.trim())                                  err.push("Pregunta 18: Aporte mensual sugerido");
-    if (!telefonos.some(t => t.numero.trim()))                  err.push("Pregunta 19: Al menos un teléfono de contacto");
+    if (!convivencia.trim())                                     err.push("Pregunta 10: ¿Con quién vive el estudiante?");
+    if (!motivos.trim())                                         err.push("Pregunta 11: Motivos para elegir la institución");
+    if (!otraInstitucion)                                        err.push("Pregunta 12: ¿Viene de otra institución? (Sí / No)");
+    if (otraInstitucion === "Si" && !dificultades.trim())        err.push("Pregunta 12: Especifique las dificultades");
+    if (!estudianteDescr.trim())                                 err.push("Pregunta 13: Descripción del estudiante");
+    if (!repetidoCurso)                                          err.push("Pregunta 14: ¿Ha repetido algún curso? (Sí / No)");
+    if (repetidoCurso === "Si" && !repetido.trim())              err.push("Pregunta 14: Especifique el curso y motivo");
+    if (!alfabetizacion)                                         err.push("Pregunta 15: Problemas de alfabetización (Sí / No)");
+    if (alfabetizacion === "Si" && !alfabetizacionDetalle.trim()) err.push("Pregunta 15: Especifique los problemas de alfabetización");
+    if (!motivacion.trim())                                      err.push("Pregunta 16: Motivación del estudiante");
+    if (!ingresoReal.trim())                                     err.push("Pregunta 17: Ingreso real de la familia");
+    if (!aporteMensual.trim())                                   err.push("Pregunta 18: Aporte mensual sugerido");
+    if (!telefonos.some(t => t.numero.trim()))                   err.push("Pregunta 19: Al menos un teléfono de contacto");
     const entFinal = entrevistadorSelect === "otro" ? entrevistadorOtro.trim() : entrevistadorSelect;
-    if (!entFinal)                                              err.push("Entrevistador: Seleccione o escriba quién realizó la entrevista");
+    if (!entFinal)                                               err.push("Entrevistador: Seleccione o escriba quién realizó la entrevista");
     return err;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (modoLectura) { navigate("/paso4"); return; }
+
     const err = validar();
     if (err.length) {
       setErrores(err);
       setTimeout(() => document.getElementById("alertas-step3")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
       return;
     }
-    // El useEffect ya guardó todo, solo navegamos
-    navigate("/paso4");
+
+    const entrevistaId = localStorage.getItem("entrevista_id");
+    if (!entrevistaId) {
+      setErrorApi("No se encontró el ID de la entrevista. Vuelva al paso 1.");
+      return;
+    }
+
+    const entFinal = entrevistadorSelect === "otro" ? entrevistadorOtro.trim() : entrevistadorSelect;
+
+    setLoading(true);
+    setErrorApi("");
+    try {
+      const res = await fetch(`${API}/entrevistas/${entrevistaId}/step3`, {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          convivencia,
+          motivos,
+          otra_institucion:        otraInstitucion,
+          dificultades:            otraInstitucion === "Si" ? dificultades : "",
+          estudiante_descr:        estudianteDescr,
+          repetido_curso:          repetidoCurso,
+          repetido:                repetidoCurso === "Si" ? repetido : "",
+          alfabetizacion,
+          alfabetizacion_detalle:  alfabetizacion === "Si" ? alfabetizacionDetalle : "",
+          motivacion,
+          ingreso_real:            ingresoReal,
+          aporte_mensual:          aporteMensual,
+          telefonos,
+          observaciones,
+          entrevistador:           entFinal,
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.error || "Error al guardar");
+      }
+      navigate("/paso4");
+    } catch (err) {
+      setErrorApi(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -240,7 +278,7 @@ export default function Step3Form() {
       </div>
 
       <form onSubmit={handleSubmit} className="p-8 pt-0 space-y-10">
-        <fieldset disabled={modoLectura} className={"space-y-10 " + (modoLectura ? "opacity-60 pointer-events-none select-none" : "")}>
+        <fieldset disabled={modoLectura || loading} className={"space-y-10 " + (modoLectura ? "opacity-60 pointer-events-none select-none" : "")}>
           <div className="pt-6 border-t border-slate-200">
             <div className="flex items-center gap-3 mb-6">
               <span className="material-symbols-outlined text-2xl" style={{ color: P }}>school</span>
@@ -417,7 +455,7 @@ export default function Step3Form() {
                 )}
               </div>
 
-              {/* Observaciones externas — opcional */}
+              {/* Observaciones externas */}
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <span className="material-symbols-outlined text-xl" style={{ color: P }}>comment</span>
@@ -429,7 +467,7 @@ export default function Step3Form() {
                   className={INPUT} rows={4} />
               </div>
 
-              {/* Entrevistador — obligatorio */}
+              {/* Entrevistador */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Entrevista realizada por <span className="text-red-400">*</span>
@@ -458,7 +496,14 @@ export default function Step3Form() {
           </div>
         </fieldset>
 
-        {/* ── Alerta detallada ── */}
+        {/* Error de API */}
+        {errorApi && (
+          <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50">
+            <p className="text-red-800 text-sm font-semibold text-center">{errorApi}</p>
+          </div>
+        )}
+
+        {/* Alertas de validación */}
         {errores.length > 0 && (
           <div id="alertas-step3" className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50"
             style={{ animation: "fadeIn .25s ease" }}>
@@ -495,10 +540,13 @@ export default function Step3Form() {
               className="px-8 py-3 rounded-xl font-bold border border-slate-300 text-slate-600 hover:bg-slate-50 active:scale-95 transition-all flex items-center gap-2">
               <span className="material-symbols-outlined text-base">arrow_back</span> Volver atrás
             </button>
-            <button type="submit"
-              className="px-12 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl transform active:scale-95 transition-all flex items-center gap-2"
-              style={{ background: P, boxShadow: "0 4px 14px rgba(81,98,111,.4)" }}>
-              Siguiente <span className="material-symbols-outlined text-base">arrow_forward</span>
+            <button type="submit" disabled={loading}
+              className="px-12 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl transform active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+              style={{ background: P, boxShadow: loading ? "none" : "0 4px 14px rgba(81,98,111,.4)" }}>
+              {loading
+                ? "Guardando..."
+                : (<>Siguiente <span className="material-symbols-outlined text-base">arrow_forward</span></>)
+              }
             </button>
           </div>
         </div>

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API = import.meta.env.VITE_API_URL ?? "/api";
+
 const FormWrapper = ({ children }) => (
   <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 flex justify-center items-start">
     <div className="w-full max-w-4xl bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
@@ -9,14 +11,15 @@ const FormWrapper = ({ children }) => (
   </div>
 );
 
-const FormFooter = ({ nextLabel }) => (
+const FormFooter = ({ nextLabel, loading }) => (
   <div className="flex items-center justify-end pt-10 border-t border-slate-200">
     <button
       type="submit"
-      className="px-12 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl transform active:scale-95 transition-all"
+      disabled={loading}
+      className="px-12 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl transform active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
       style={{ background: "#51626f", boxShadow: "0 4px 14px rgba(81,98,111,.4)" }}
     >
-      {nextLabel} →
+      {loading ? "Guardando..." : `${nextLabel} →`}
     </button>
   </div>
 );
@@ -55,9 +58,6 @@ function useNivelAcademico(init = {}) {
   return { nivel, duracion, setDuracion, tipo, setTipo, showDur, showTipo, onChange };
 }
 
-// ── NivelSelect definido FUERA del componente principal ──────────────────────
-// Esto evita que React lo desmonte/remonte en cada render, lo que causaba
-// que el campo "Especifique el tipo" perdiera el foco al escribir.
 const NivelSelect = ({ hook, onClearErrors }) => (
   <div>
     <select
@@ -68,7 +68,6 @@ const NivelSelect = ({ hook, onClearErrors }) => (
       <option value="">Seleccione</option>
       {NIVEL_OPS.map(v => <option key={v} value={v}>{NIVEL_LABELS[v]}</option>)}
     </select>
-
     {hook.showDur && (
       <div className="mt-4">
         <label className="block text-sm font-medium text-slate-700 mb-2">Estado de estudios</label>
@@ -84,7 +83,6 @@ const NivelSelect = ({ hook, onClearErrors }) => (
         </select>
       </div>
     )}
-
     {hook.showTipo && (
       <div className="mt-4">
         <label className="block text-sm font-medium text-slate-700 mb-2">Especifique el tipo</label>
@@ -103,12 +101,15 @@ const NivelSelect = ({ hook, onClearErrors }) => (
 export default function Step1Form() {
   const navigate = useNavigate();
 
-  const [saved, setSaved]         = useState(() => JSON.parse(localStorage.getItem("entrevista") || "{}"));
+  const [saved, setSaved]           = useState(() => JSON.parse(localStorage.getItem("entrevista") || "{}"));
   const [modoLectura, setModoLectura] = useState(() => localStorage.getItem("entrevista_modo_lectura") === "true");
   const [currentDate, setCurrentDate] = useState("");
   const [query,       setQuery]       = useState("");
   const [resultados,  setResultados]  = useState([]);
+  const [buscando,    setBuscando]    = useState(false);
   const [errores,     setErrores]     = useState([]);
+  const [loading,     setLoading]     = useState(false);
+  const [errorApi,    setErrorApi]    = useState("");
 
   const [entrevistados, setEntrevistados] = useState(() => {
     if (saved.entrevistados) return saved.entrevistados.map(e => ({ ...e, id: e.id || Date.now() }));
@@ -127,7 +128,7 @@ export default function Step1Form() {
   const [vinculacion,            setVinculacion]           = useState(saved.vinculacion || "");
   const [especificarVinculacion, setEspecificarVinculacion] = useState(saved.especificar_vinculacion || "");
 
-  const clearErrors = () => { if (errores.length) setErrores([]); };
+  const clearErrors = () => { if (errores.length) setErrores([]); setErrorApi(""); };
 
   useEffect(() => { setCurrentDate(new Date().toISOString().split("T")[0]); }, []);
   useEffect(() => { setMostrarTutorFields(entrevistados.some(e => e.parentesco === "tutor")); }, [entrevistados]);
@@ -139,22 +140,24 @@ export default function Step1Form() {
     clearErrors();
   };
 
-  const buscar = (texto) => {
-    setQuery(texto);
-    if (!texto.trim()) { setResultados([]); return; }
-    const enc = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+  // ── Buscador contra el backend ────────────────────────────────────────────
+  useEffect(() => {
+    if (!query.trim()) { setResultados([]); return; }
+    const controller = new AbortController();
+    const delay = setTimeout(async () => {
+      setBuscando(true);
       try {
-        const item = JSON.parse(localStorage.getItem(key));
-        if (item && (item.nombres || item.apellidos)) {
-          if (`${item.nombres || ""} ${item.apellidos || ""}`.toLowerCase().includes(texto.toLowerCase()))
-            enc.push({ key, data: item });
-        }
-      } catch (_) {}
-    }
-    setResultados(enc);
-  };
+        const res  = await fetch(`${API}/entrevistas/buscar?query=${encodeURIComponent(query.trim())}`, { signal: controller.signal });
+        const data = await res.json();
+        setResultados(Array.isArray(data) ? data : []);
+      } catch (err) {
+        if (err.name !== "AbortError") setResultados([]);
+      } finally {
+        setBuscando(false);
+      }
+    }, 350); // debounce 350ms
+    return () => { clearTimeout(delay); controller.abort(); };
+  }, [query]);
 
   const resetEstados = (data) => {
     setEntrevistados(
@@ -169,24 +172,123 @@ export default function Step1Form() {
     setSaved(data);
   };
 
-  const cargarEntrevista = (data) => {
-    localStorage.setItem("entrevista", JSON.stringify(data));
-    localStorage.setItem("entrevista_modo_lectura", "true");
-    setQuery(""); setResultados([]); setModoLectura(true);
-    resetEstados(data);
+  // ── Cargar entrevista desde resultado del backend ─────────────────────────
+  const cargarDesdeBackend = async (entrevistaId, modo) => {
+    try {
+      const res  = await fetch(`${API}/entrevistas/${entrevistaId}`);
+      const data = await res.json();
+      // Normalizar la respuesta del backend al shape que usan los steps
+      const flat = normalizarEntrevista(data);
+      localStorage.setItem("entrevista", JSON.stringify(flat));
+      localStorage.setItem("entrevista_id", entrevistaId);
+      if (modo === "lectura") {
+        localStorage.setItem("entrevista_modo_lectura", "true");
+        setModoLectura(true);
+      } else {
+        localStorage.removeItem("entrevista_modo_lectura");
+        setModoLectura(false);
+      }
+      setQuery(""); setResultados([]);
+      resetEstados(flat);
+    } catch {
+      setErrorApi("No se pudo cargar la entrevista. Intente de nuevo.");
+    }
   };
 
-  const editarEntrevista = (data) => {
-    localStorage.setItem("entrevista", JSON.stringify(data));
-    localStorage.removeItem("entrevista_modo_lectura");
-    setQuery(""); setResultados([]); setModoLectura(false);
-    resetEstados(data);
-  };
+  // Convierte la respuesta completa del GET /id al shape plano que usa el frontend
+  const normalizarEntrevista = (d) => ({
+    entrevistaId:   d.id,
+    nombres:        d.estudiante?.nombres   || "",
+    apellidos:      d.estudiante?.apellidos || "",
+    sexo:           d.estudiante?.cat_sexo?.codigo || "",
+    edad:           d.estudiante?.edad      || "",
+    fecha:          d.fecha_entrevista      || "",
+    formulario:     d.formulario            || "",
+    seccion:        d.seccion               || "",
+    vinculacion:    d.cat_vinculacion_institucional?.codigo || "",
+    especificar_vinculacion: d.especificar_vinculacion || "",
+    estado_civil:   d.cat_estado_civil?.nombre || "",
+    entrevistados:  (d.entrevista_participante || []).map(p => ({
+      id:              p.id,
+      nombre:          p.nombre,
+      parentesco:      p.cat_parentesco?.codigo || "",
+      parentesco_otro: p.parentesco_otro || "",
+    })),
+    nivel_madre:    d.entrevista_nivel_academico_referente?.find(r => r.rol === "madre")?.cat_nivel_academico?.codigo || "",
+    duracion_madre: d.entrevista_nivel_academico_referente?.find(r => r.rol === "madre")?.cat_estado_estudio?.codigo || "",
+    tipo_madre:     d.entrevista_nivel_academico_referente?.find(r => r.rol === "madre")?.tipo_especifico || "",
+    nivel_padre:    d.entrevista_nivel_academico_referente?.find(r => r.rol === "padre")?.cat_nivel_academico?.codigo || "",
+    duracion_padre: d.entrevista_nivel_academico_referente?.find(r => r.rol === "padre")?.cat_estado_estudio?.codigo || "",
+    tipo_padre:     d.entrevista_nivel_academico_referente?.find(r => r.rol === "padre")?.tipo_especifico || "",
+    nivel_tutor:    d.entrevista_nivel_academico_referente?.find(r => r.rol === "tutor")?.cat_nivel_academico?.codigo || "",
+    duracion_tutor: d.entrevista_nivel_academico_referente?.find(r => r.rol === "tutor")?.cat_estado_estudio?.codigo || "",
+    tipo_tutor:     d.entrevista_nivel_academico_referente?.find(r => r.rol === "tutor")?.tipo_especifico || "",
+    // Step 2
+    conducta:            d.entrevista_respuesta_principal?.conducta || "",
+    inconvenientes:      d.entrevista_respuesta_principal?.inconvenientes || "",
+    ayuda_psic:          d.entrevista_respuesta_principal?.ayuda_psicologica ? "Si" : "No",
+    ayuda_psic_detalle:  d.entrevista_respuesta_principal?.ayuda_psicologica_detalle || "",
+    zona_vivienda:       d.entrevista_respuesta_principal?.zona_vivienda || "",
+    habitos:             d.entrevista_respuesta_principal?.habitos || "",
+    actividades_familia: d.entrevista_respuesta_principal?.actividades_familia || "",
+    tiempo_juntos:       d.entrevista_respuesta_principal?.tiempo_juntos || "",
+    expectativas_centro: d.entrevista_respuesta_principal?.expectativas_centro || "",
+    agresion_ocurrida:   d.entrevista_respuesta_principal?.agresion_ocurrida ? "Si" : "No",
+    agresiones:          d.entrevista_respuesta_principal?.agresiones || "",
+    // Step 3
+    convivencia:          d.entrevista_respuesta_principal?.convivencia || "",
+    motivos:              d.entrevista_respuesta_principal?.motivos_institucion || "",
+    otra_institucion:     d.entrevista_respuesta_principal?.otra_institucion ? "Si" : "No",
+    dificultades:         d.entrevista_respuesta_principal?.dificultades_otra_institucion || "",
+    estudiante_descr:     d.entrevista_respuesta_principal?.descripcion_estudiante || "",
+    repetido_curso:       d.entrevista_respuesta_principal?.repitencia_sobreedad ? "Si" : "No",
+    repetido:             d.entrevista_respuesta_principal?.repitencia_sobreedad || "",
+    alfabetizacion:       d.entrevista_respuesta_principal?.alfabetizacion ? "Si" : "No",
+    alfabetizacion_detalle: d.entrevista_respuesta_principal?.alfabetizacion_detalle || "",
+    motivacion:           d.entrevista_respuesta_principal?.motivacion_estudiante || "",
+    ingreso_real:         d.ingreso_real?.toString() || "",
+    aporte_mensual:       d.aporte_mensual?.toString() || "",
+    observaciones:        d.observaciones || "",
+    entrevistador:        d.cat_entrevistador?.nombre || "",
+    telefonos:            (d.entrevista_telefono || []).map(t => ({
+      numero: t.numero,
+      dueno:  t.cat_dueno_telefono?.nombre || "",
+    })),
+    // Step 4
+    condicion_salud:            d.entrevista_respuesta_extra?.condicion_salud ? "Si" : "No",
+    condicion_salud_detalle:    d.entrevista_respuesta_extra?.condicion_salud_detalle || "",
+    medicamento:                d.entrevista_respuesta_extra?.medicamento || "",
+    medicamento_detalle:        d.entrevista_respuesta_extra?.medicamento_detalle || "",
+    supervisor_extraescolar:    d.entrevista_respuesta_extra?.supervisor_extraescolar || "",
+    supervisor_otro_especifico: d.entrevista_respuesta_extra?.supervisor_otro_especifico || "",
+    padres_fuera:               d.entrevista_respuesta_extra?.padres_fuera ? "Si" : "No",
+    padres_fuera_detalle:       d.entrevista_respuesta_extra?.padres_fuera_detalle || "",
+    pais_madre:                 d.entrevista_respuesta_extra?.cat_pais_entrevista_respuesta_extra_pais_madre_idTocat_pais?.nombre || "",
+    pais_madre_otro:            d.entrevista_respuesta_extra?.pais_madre_otro || "",
+    pais_padre:                 d.entrevista_respuesta_extra?.cat_pais_entrevista_respuesta_extra_pais_padre_idTocat_pais?.nombre || "",
+    pais_padre_otro:            d.entrevista_respuesta_extra?.pais_padre_otro || "",
+    observaciones_padres_fuera: d.entrevista_respuesta_extra?.observaciones_padres_fuera || "",
+    tipo_casa:                  d.entrevista_respuesta_extra?.tipo_casa || "",
+    estado_padres:              d.entrevista_respuesta_extra?.estado_padres || "",
+    convive_padres:             d.entrevista_respuesta_extra?.convive_padres || "",
+    figuras_familiares:         d.entrevista_respuesta_extra?.figuras_familiares || "",
+    hermanos_exalumnos_si_no:   d.entrevista_respuesta_extra?.hermanos_exalumnos_si_no ? "Si" : "No",
+    hermanos:                   (d.entrevista_hermano_exalumno || []).map(h => ({
+      nombre:          h.nombre,
+      taller:          h.cat_taller?.codigo || "",
+      anio:            h.anio_graduacion?.toString() || "",
+      tipo:            h.tipo_parentesco || "",
+      otro_especifico: "",
+    })),
+    valoracion_familia:      d.entrevista_respuesta_extra?.valoracion_familia?.toString() || "",
+    observaciones_internas:  d.entrevista_respuesta_extra?.observaciones_internas || "",
+  });
 
   const salirModoLectura = () => {
     setModoLectura(false);
     localStorage.removeItem("entrevista_modo_lectura");
     localStorage.removeItem("entrevista");
+    localStorage.removeItem("entrevista_id");
     window.location.reload();
   };
 
@@ -199,31 +301,26 @@ export default function Step1Form() {
   const validar = (form) => {
     const f   = (n) => form.get(n)?.trim() || "";
     const err = [];
-
     if (!f("formulario")) err.push("Número de formulario");
     if (!f("nombres"))   err.push("Nombre(s) del estudiante");
     if (!f("apellidos")) err.push("Apellido(s) del estudiante");
     if (!f("sexo"))      err.push("Sexo del estudiante");
     if (!f("edad"))      err.push("Edad del estudiante");
-
     entrevistados.forEach((ent, i) => {
       if (!ent.nombre.trim()) err.push(`Nombre del entrevistado ${i + 1}`);
       if (!ent.parentesco)    err.push(`Parentesco del entrevistado ${i + 1}`);
       if (ent.parentesco === "otro" && !ent.parentesco_otro.trim())
         err.push(`Especifique el parentesco del entrevistado ${i + 1}`);
     });
-
     if (!madre.nivel) err.push("Nivel académico de la madre");
     if (!padre.nivel) err.push("Nivel académico del padre");
-
     if (madre.showDur && !madre.duracion) err.push("Estado de estudios de la madre");
     if (padre.showDur && !padre.duracion) err.push("Estado de estudios del padre");
     if (mostrarTutorFields && tutor.showDur && !tutor.duracion) err.push("Estado de estudios del tutor legal");
-
     return err;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (modoLectura) { navigate("/paso2"); return; }
 
@@ -231,15 +328,41 @@ export default function Step1Form() {
     const err  = validar(form);
     if (err.length) { setErrores(err); return; }
 
-    const data = {
-      ...saved, ...Object.fromEntries(form.entries()), entrevistados,
-      nivel_madre: madre.nivel, duracion_madre: madre.duracion, tipo_madre: madre.tipo,
-      nivel_padre: padre.nivel, duracion_padre: padre.duracion, tipo_padre: padre.tipo,
-      nivel_tutor: tutor.nivel, duracion_tutor: tutor.duracion, tipo_tutor: tutor.tipo,
-      vinculacion, especificar_vinculacion: especificarVinculacion,
+    const payload = {
+      ...Object.fromEntries(form.entries()),
+      fecha:        currentDate,
+      entrevistados,
+      nivel_madre:  madre.nivel, duracion_madre: madre.duracion, tipo_madre: madre.tipo,
+      nivel_padre:  padre.nivel, duracion_padre: padre.duracion, tipo_padre: padre.tipo,
+      nivel_tutor:  tutor.nivel, duracion_tutor: tutor.duracion, tipo_tutor: tutor.tipo,
+      vinculacion,
+      especificar_vinculacion: especificarVinculacion,
     };
-    localStorage.setItem("entrevista", JSON.stringify(data));
-    navigate("/paso2");
+
+    setLoading(true);
+    setErrorApi("");
+    try {
+      const res  = await fetch(`${API}/entrevistas/step1`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Error al guardar");
+      }
+      const { entrevista } = await res.json();
+
+      // Guardar el ID y los datos en localStorage para los pasos siguientes
+      localStorage.setItem("entrevista_id", entrevista.id);
+      localStorage.setItem("entrevista", JSON.stringify({ ...payload, entrevistaId: entrevista.id }));
+
+      navigate("/paso2");
+    } catch (err) {
+      setErrorApi(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -249,10 +372,7 @@ export default function Step1Form() {
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         select {
           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
-          background-position: right .75rem center;
-          background-repeat: no-repeat;
-          background-size: 1.25em;
-          padding-right: 2.5rem !important;
+          background-position: right .75rem center; background-repeat: no-repeat; background-size: 1.25em; padding-right: 2.5rem !important;
         }
       `}</style>
 
@@ -315,7 +435,7 @@ export default function Step1Form() {
                 <span className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                   <span className="material-symbols-outlined text-slate-400 text-xl">search</span>
                 </span>
-                <input type="text" value={query} onChange={e => buscar(e.target.value)}
+                <input type="text" value={query} onChange={e => setQuery(e.target.value)}
                   placeholder="Escriba el nombre o apellido del estudiante..."
                   className="w-full pl-11 pr-11 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none transition-all text-sm text-slate-700"
                 />
@@ -326,40 +446,50 @@ export default function Step1Form() {
                   </button>
                 )}
               </div>
+
               {query && (
                 <div className="mt-3">
-                  {resultados.length === 0 ? (
+                  {buscando ? (
+                    <div className="flex items-center gap-2 text-slate-400 py-3 px-2">
+                      <span className="material-symbols-outlined text-lg animate-spin">progress_activity</span>
+                      <p className="text-sm italic">Buscando...</p>
+                    </div>
+                  ) : resultados.length === 0 ? (
                     <div className="flex items-center gap-2 text-slate-400 py-3 px-2">
                       <span className="material-symbols-outlined text-lg">sentiment_dissatisfied</span>
                       <p className="text-sm italic">No se encontraron entrevistas con ese nombre.</p>
                     </div>
                   ) : (
                     <ul className="rounded-xl border border-slate-100 overflow-hidden divide-y divide-slate-100 max-h-56 overflow-y-auto">
-                      {resultados.map(({ key, data }) => (
-                        <li key={key} className="flex items-center justify-between gap-2 px-4 py-3 hover:bg-slate-50 transition-all">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-                              style={{ background: "rgba(81,98,111,.12)" }}>
-                              <span className="material-symbols-outlined text-lg" style={{ color: P }}>person</span>
+                      {resultados.map((item) => {
+                        const nombre = `${item.estudiante?.nombres ?? ""} ${item.estudiante?.apellidos ?? ""}`.trim();
+                        const fecha  = item.fecha_entrevista ? new Date(item.fecha_entrevista).toLocaleDateString() : "Sin fecha";
+                        return (
+                          <li key={item.id} className="flex items-center justify-between gap-2 px-4 py-3 hover:bg-slate-50 transition-all">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                                style={{ background: "rgba(81,98,111,.12)" }}>
+                                <span className="material-symbols-outlined text-lg" style={{ color: P }}>person</span>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-slate-800 truncate">{nombre}</p>
+                                <p className="text-xs text-slate-400">{fecha}{item.seccion ? ` · Sección ${item.seccion}` : ""}</p>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-slate-800 truncate">{data.nombres} {data.apellidos}</p>
-                              <p className="text-xs text-slate-400">{data.fecha || "Sin fecha"}{data.seccion ? ` · Sección ${data.seccion}` : ""}</p>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button type="button" onClick={() => cargarDesdeBackend(item.id, "lectura")}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all text-xs font-medium">
+                                <span className="material-symbols-outlined text-base">visibility</span> Ver
+                              </button>
+                              <button type="button" onClick={() => cargarDesdeBackend(item.id, "edicion")}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-white transition-all text-xs font-medium hover:opacity-90"
+                                style={{ background: P, borderColor: P }}>
+                                <span className="material-symbols-outlined text-base">edit</span> Editar
+                              </button>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <button type="button" onClick={() => cargarEntrevista(data)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all text-xs font-medium">
-                              <span className="material-symbols-outlined text-base">visibility</span> Ver
-                            </button>
-                            <button type="button" onClick={() => editarEntrevista(data)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-white transition-all text-xs font-medium hover:opacity-90"
-                              style={{ background: P, borderColor: P }}>
-                              <span className="material-symbols-outlined text-base">edit</span> Editar
-                            </button>
-                          </div>
-                        </li>
-                      ))}
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
@@ -370,7 +500,7 @@ export default function Step1Form() {
       </div>
 
       <form onSubmit={handleSubmit} className="p-8 pt-0 space-y-10">
-        <fieldset disabled={modoLectura} className={"space-y-10 " + (modoLectura ? "opacity-60 pointer-events-none select-none" : "")}>
+        <fieldset disabled={modoLectura || loading} className={"space-y-10 " + (modoLectura ? "opacity-60 pointer-events-none select-none" : "")}>
 
           {/* Datos básicos */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -381,13 +511,11 @@ export default function Step1Form() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Formulario <span className="text-red-400">*</span></label>
-              <input name="formulario" defaultValue={saved.formulario || ""} placeholder="0"
-                className={INPUT} type="text" onChange={clearErrors} />
+              <input name="formulario" defaultValue={saved.formulario || ""} placeholder="0" className={INPUT} type="text" onChange={clearErrors} />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Sección</label>
-              <input name="seccion" defaultValue={saved.seccion || ""} placeholder="0"
-                className={INPUT} type="text" onChange={clearErrors} />
+              <input name="seccion" defaultValue={saved.seccion || ""} placeholder="0" className={INPUT} type="text" onChange={clearErrors} />
             </div>
           </div>
 
@@ -400,13 +528,11 @@ export default function Step1Form() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Nombre(s) <span className="text-red-400">*</span></label>
-                <input name="nombres" defaultValue={saved.nombres || ""} placeholder="Ingrese nombres"
-                  className={INPUT} type="text" onChange={clearErrors} />
+                <input name="nombres" defaultValue={saved.nombres || ""} placeholder="Ingrese nombres" className={INPUT} type="text" onChange={clearErrors} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Apellido(s) <span className="text-red-400">*</span></label>
-                <input name="apellidos" defaultValue={saved.apellidos || ""} placeholder="Ingrese apellidos"
-                  className={INPUT} type="text" onChange={clearErrors} />
+                <input name="apellidos" defaultValue={saved.apellidos || ""} placeholder="Ingrese apellidos" className={INPUT} type="text" onChange={clearErrors} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Sexo <span className="text-red-400">*</span></label>
@@ -418,13 +544,12 @@ export default function Step1Form() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Edad <span className="text-red-400">*</span></label>
-                <input name="edad" defaultValue={saved.edad || ""} placeholder="0"
-                  className={INPUT} type="number" onChange={clearErrors} />
+                <input name="edad" defaultValue={saved.edad || ""} placeholder="0" className={INPUT} type="number" onChange={clearErrors} />
               </div>
             </div>
           </div>
 
-          {/* Entrevistados */}
+          {/* Entrevistados — idéntico al original */}
           <div className="pt-6 border-t border-slate-200">
             <div className="flex items-center gap-3 mb-6">
               <span className="material-symbols-outlined text-2xl" style={{ color: P }}>groups</span>
@@ -441,9 +566,7 @@ export default function Step1Form() {
                       placeholder="Nombre de quien asiste" className={INPUT} type="text" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Parentesco <span className="text-red-400">*</span>
-                    </label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Parentesco <span className="text-red-400">*</span></label>
                     <select value={ent.parentesco} onChange={e => handleParentescoChange(index, e.target.value)} className={SELECT}>
                       <option value="">Seleccione relación</option>
                       <option value="madre">Madre</option>
@@ -467,8 +590,7 @@ export default function Step1Form() {
                 {entrevistados.length > 1 && (
                   <div className="mt-2 flex justify-end">
                     <button type="button" onClick={() => removeEntrevistado(index)}
-                      className="flex items-center gap-1 text-sm transition-all hover:opacity-70"
-                      style={{ color: "#c1393f" }}>
+                      className="flex items-center gap-1 text-sm transition-all hover:opacity-70" style={{ color: "#c1393f" }}>
                       <span className="material-symbols-outlined">delete</span> Eliminar
                     </button>
                   </div>
@@ -490,15 +612,11 @@ export default function Step1Form() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Nivel académico - Madre <span className="text-red-400">*</span>
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Nivel académico - Madre <span className="text-red-400">*</span></label>
                 <NivelSelect hook={madre} onClearErrors={clearErrors} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Nivel académico - Padre <span className="text-red-400">*</span>
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Nivel académico - Padre <span className="text-red-400">*</span></label>
                 <NivelSelect hook={padre} onClearErrors={clearErrors} />
               </div>
             </div>
@@ -531,8 +649,7 @@ export default function Step1Form() {
                 { value: "traslado",   label: "Traslado" },
                 { value: "exalumno",   label: "Exalumno" },
               ].map(item => (
-                <div key={item.value}
-                  onClick={() => handleVinculacionToggle(item.value)}
+                <div key={item.value} onClick={() => handleVinculacionToggle(item.value)}
                   className="flex flex-col items-center justify-center gap-1 px-3 py-3 rounded-xl border cursor-pointer transition-all text-center min-h-[85px] select-none"
                   style={{
                     borderColor: vinculacion === item.value ? P : "#cbd5e1",
@@ -543,11 +660,10 @@ export default function Step1Form() {
                     <div style={{
                       width: "16px", height: "16px", borderRadius: "50%",
                       border: `2px solid ${vinculacion === item.value ? P : "#94a3b8"}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      transition: "all 0.2s ease",
+                      display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s ease",
                     }}>
                       {vinculacion === item.value && (
-                        <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: P, animation: "fadeIn 0.2s ease" }} />
+                        <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: P }} />
                       )}
                     </div>
                     <span className="text-sm font-bold" style={{ color: vinculacion === item.value ? P : "#475569" }}>{item.label}</span>
@@ -568,17 +684,23 @@ export default function Step1Form() {
             )}
             {vinculacion && (
               <div className="mt-6">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Especifique la relación (ej: exalumno, trabaja, animador, etc.)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Especifique la relación</label>
                 <textarea value={especificarVinculacion}
                   onChange={e => { setEspecificarVinculacion(e.target.value); clearErrors(); }}
                   placeholder="Detalles de la vinculación..." className={INPUT} rows={3} />
               </div>
             )}
           </div>
-
         </fieldset>
 
-        {/* Alerta de errores */}
+        {/* Error de API */}
+        {errorApi && (
+          <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50">
+            <p className="text-red-800 text-sm font-semibold text-center">{errorApi}</p>
+          </div>
+        )}
+
+        {/* Errores de validación */}
         {errores.length > 0 && (
           <div className="mx-auto max-w-lg p-4 rounded-2xl border border-red-100 bg-red-50">
             <div className="flex items-start gap-3">
@@ -605,7 +727,7 @@ export default function Step1Form() {
           </div>
         )}
 
-        <FormFooter nextLabel="Siguiente" />
+        <FormFooter nextLabel="Siguiente" loading={loading} />
       </form>
     </FormWrapper>
   );
