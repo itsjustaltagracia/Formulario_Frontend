@@ -227,19 +227,30 @@ export default function Step4Form() {
 
     // ── igual que Step2/Step3: leer el ID y llamar al backend ────────────
     const entrevistaId = localStorage.getItem("entrevista_id");
+    const token = localStorage.getItem("token"); // Definimos el token aquí
+
     if (!entrevistaId) {
       setErrorApi("No se encontró el ID de la entrevista. Vuelva al paso 1.");
       setAlertas([]);
       return;
     }
 
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+
     setAlertas([]);
     setErrorApi("");
     setIsSaving(true);
+
     try {
       const res = await fetch(`${API}/entrevistas/${entrevistaId}/step4`, {
         method:  "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` // Se añade el token aquí
+        },
         body: JSON.stringify({
           condicion_salud:            condicionSalud,
           condicion_salud_detalle:    condicionSalud === "Si" ? condicionSaludDetalle : "",
@@ -264,10 +275,19 @@ export default function Step4Form() {
           observaciones_internas:     obsInternas || null,
         }),
       });
+
+      // Manejo de token expirado (No autorizado)
+      if (res.status === 401) {
+        localStorage.clear();
+        navigate("/login");
+        return;
+      }
+
       if (!res.ok) {
         const e = await res.json();
         throw new Error(e.error || "Error al guardar");
       }
+
       setShowSuccess(true);
     } catch (err) {
       setErrorApi(err.message);

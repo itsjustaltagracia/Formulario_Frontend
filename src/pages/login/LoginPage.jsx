@@ -57,10 +57,12 @@ export default function LoginPage() {
       // Mostrar mensaje de éxito
       setMostrarExito(true);
 
-      // Redirigir después de 2 segundos
-      setTimeout(() => {
-        navigate("/");
-      }, 2000);
+      // Forzamos el guardado y un salto total de página
+localStorage.setItem("token", data.token); 
+
+setTimeout(() => {
+  window.location.assign("/"); // Esto obliga al navegador a cargar la App desde cero
+}, 500); // Bajamos a 0.5 segundos para que sea más rápido
 
     } catch (err) {
       setError(err.message || "Error al iniciar sesión. Inténtelo de nuevo.");
@@ -68,7 +70,7 @@ export default function LoginPage() {
       setCargando(false);
     }
   };
-  
+
   const handleInputChange = (setter) => (e) => {
     setter(e.target.value);
     if (error) setError("");

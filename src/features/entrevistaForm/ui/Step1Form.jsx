@@ -151,29 +151,62 @@ export default function Step1Form() {
     clearErrors();
   };
 
-  // Buscador
+  // ── BUSCADOR CON FILTRO DE SEGURIDAD (TOKEN) ─────────────────────────
   useEffect(() => {
-    if (!query.trim()) { setResultados([]); return; }
+    // Si la consulta está vacía, limpiamos resultados
+    if (!query.trim()) { 
+      setResultados([]); 
+      return; 
+    }
+
     const controller = new AbortController();
+    const token = localStorage.getItem("token"); // Extraemos el token para la petición
+
     const delay = setTimeout(async () => {
       setBuscando(true);
       try {
-        const res  = await fetch(`${API}/entrevistas/buscar?query=${encodeURIComponent(query.trim())}`, { signal: controller.signal });
+        const res = await fetch(`${API}/entrevistas/buscar?query=${encodeURIComponent(query.trim())}`, { 
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}` // <--- Token inyectado
+          }
+        });
+
+        // Si el backend responde 401, la sesión no es válida
+        if (res.status === 401) {
+          localStorage.clear();
+          navigate("/login");
+          return;
+        }
+
+        if (!res.ok) throw new Error("Error en la búsqueda");
+
         const data = await res.json();
         setResultados(Array.isArray(data) ? data : []);
       } catch (err) {
-        if (err.name !== "AbortError") setResultados([]);
+        // No mostramos error si la petición fue abortada por el usuario al escribir rápido
+        if (err.name !== "AbortError") {
+          setResultados([]);
+          console.error("Error buscando:", err);
+        }
       } finally {
         setBuscando(false);
       }
-    }, 350);
-    return () => { clearTimeout(delay); controller.abort(); };
-  }, [query]);
+    }, 350); // Debounce de 350ms para no saturar el servidor
 
+    return () => { 
+      clearTimeout(delay); 
+      controller.abort(); 
+    };
+  }, [query, navigate]);
+
+
+  // ── RESETEAR ESTADOS DEL FORMULARIO ──────────────────────────────────
   const resetEstados = (data) => {
     setEntrevistados(
-      data.entrevistados
-        ? data.entrevistados.map(e => ({ ...e, id: e.id || Date.now() }))
+      data.entrevistados && data.entrevistados.length > 0
+        ? data.entrevistados.map(e => ({ ...e, id: e.id || Date.now() + Math.random() }))
         : data.entrevistado
         ? [{ id: Date.now(), nombre: data.entrevistado, parentesco: data.parentesco || "", parentesco_otro: data.parentesco_otro || "" }]
         : [{ id: Date.now(), nombre: "", parentesco: "", parentesco_otro: "" }]
@@ -183,13 +216,34 @@ export default function Step1Form() {
     setSaved(data);
   };
 
+
+  // ── CARGAR ENTREVISTA EXISTENTE DESDE EL BACKEND ─────────────────────
   const cargarDesdeBackend = async (entrevistaId, modo) => {
+    const token = localStorage.getItem("token");
+    setErrorApi(""); // Limpiamos errores previos
+
     try {
-      const res  = await fetch(`${API}/entrevistas/${entrevistaId}`);
+      const res = await fetch(`${API}/entrevistas/${entrevistaId}`, {
+        headers: {
+          "Authorization": `Bearer ${token}` // <--- Token inyectado
+        }
+      });
+
+      if (res.status === 401) {
+        localStorage.clear();
+        navigate("/login");
+        return;
+      }
+
+      if (!res.ok) throw new Error("No se pudo obtener la entrevista");
+
       const data = await res.json();
       const flat = normalizarEntrevista(data);
+      
+      // Guardamos en Storage para persistencia entre pasos
       localStorage.setItem("entrevista", JSON.stringify(flat));
       localStorage.setItem("entrevista_id", entrevistaId);
+      
       if (modo === "lectura") {
         localStorage.setItem("entrevista_modo_lectura", "true");
         setModoLectura(true);
@@ -197,10 +251,15 @@ export default function Step1Form() {
         localStorage.removeItem("entrevista_modo_lectura");
         setModoLectura(false);
       }
-      setQuery(""); setResultados([]);
+      
+      // Limpiamos buscador y actualizamos UI
+      setQuery(""); 
+      setResultados([]);
       resetEstados(flat);
-    } catch {
-      setErrorApi("No se pudo cargar la entrevista. Intente de nuevo.");
+
+    } catch (err) {
+      console.error("Error cargando entrevista:", err);
+      setErrorApi("No se pudo cargar la entrevista seleccionada. Intente de nuevo.");
     }
   };
 
@@ -348,15 +407,28 @@ export default function Step1Form() {
     setLoading(true);
     setErrorApi("");
     try {
-      const res  = await fetch(`${API}/entrevistas/step1`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(payload),
+      // 1. OBTENER EL TOKEN DEL STORAGE
+      const token = localStorage.getItem("token");
+
+      const res = await fetch(`${API}/entrevistas/step1`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          // 2. ENVIAR EL TOKEN AL BACKEND
+          "Authorization": `Bearer ${token}` 
+        },
+        body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
+        // Si el servidor responde 401 aquí, es porque el token no llegó o no sirve
+        if (res.status === 401) {
+          throw new Error("Sesión expirada. Por favor, vuelve a loguearte.");
+        }
         const err = await res.json();
         throw new Error(err.error || "Error al guardar");
       }
+
       const { entrevista } = await res.json();
 
       localStorage.setItem("entrevista_id", entrevista.id);

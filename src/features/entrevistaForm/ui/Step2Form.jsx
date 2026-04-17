@@ -103,7 +103,6 @@ export default function Step2Form() {
     if (errores.length) setErrores([]);
   };
 
-  // Auto-guardado en localStorage (para recuperar si vuelven atrás)
   useEffect(() => {
     if (modoLectura) return;
     const existing = readStorage();
@@ -119,18 +118,18 @@ export default function Step2Form() {
 
   const validar = () => {
     const err = [];
-    if (!estadoCivil)                                       err.push("Estado civil de los padres");
-    if (!conducta.trim())                                   err.push("Pregunta 1: Conducta escolar del estudiante");
-    if (!inconvenientes.trim())                             err.push("Pregunta 2: Inconvenientes en el colegio");
-    if (!ayudaPsic)                                         err.push("Pregunta 3: Ayuda psicológica (Sí / No)");
-    if (ayudaPsic === "Si" && !ayudaPsicDetalle.trim())     err.push("Pregunta 3: Especifique la ayuda psicológica recibida");
-    if (!zonaVivienda.trim())                               err.push("Pregunta 4: Zona de vivienda");
-    if (!habitos.trim())                                    err.push("Pregunta 5: Hábitos de estudio");
-    if (!actividadesFamilia.trim())                         err.push("Pregunta 6: Actividades en familia");
-    if (!tiempoJuntos.trim())                               err.push("Pregunta 7: Tiempo juntos en casa");
-    if (!expectativasCentro.trim())                         err.push("Pregunta 8: Expectativas del Centro");
-    if (!agresionOcurrida)                                  err.push("Pregunta 9: Agresiones (Sí / No)");
-    if (agresionOcurrida === "Si" && !agresiones.trim())    err.push("Pregunta 9: Especifique las agresiones");
+    if (!estadoCivil) err.push("Estado civil de los padres");
+    if (!conducta.trim()) err.push("Pregunta 1: Conducta escolar del estudiante");
+    if (!inconvenientes.trim()) err.push("Pregunta 2: Inconvenientes en el colegio");
+    if (!ayudaPsic) err.push("Pregunta 3: Ayuda psicológica (Sí / No)");
+    if (ayudaPsic === "Si" && !ayudaPsicDetalle.trim()) err.push("Pregunta 3: Especifique la ayuda psicológica recibida");
+    if (!zonaVivienda.trim()) err.push("Pregunta 4: Zona de vivienda");
+    if (!habitos.trim()) err.push("Pregunta 5: Hábitos de estudio");
+    if (!actividadesFamilia.trim()) err.push("Pregunta 6: Actividades en familia");
+    if (!tiempoJuntos.trim()) err.push("Pregunta 7: Tiempo juntos en casa");
+    if (!expectativasCentro.trim()) err.push("Pregunta 8: Expectativas del Centro");
+    if (!agresionOcurrida) err.push("Pregunta 9: Agresiones (Sí / No)");
+    if (agresionOcurrida === "Si" && !agresiones.trim()) err.push("Pregunta 9: Especifique las agresiones");
     return err;
   };
 
@@ -141,13 +140,19 @@ export default function Step2Form() {
     if (err.length) { setErrores(err); return; }
 
     const entrevistaId = localStorage.getItem("entrevista_id");
+    const token = localStorage.getItem("token"); // <--- NUEVO: Obtenemos el token
+
     if (!entrevistaId) { setErrorApi("No se encontró el ID de la entrevista. Vuelva al paso 1."); return; }
+    if (!token) { setErrorApi("Sesión expirada. Por favor inicie sesión de nuevo."); return; } // <--- NUEVO
 
     setLoading(true); setErrorApi("");
     try {
       const res = await fetch(`${API}/entrevistas/${entrevistaId}/step2`, {
         method:  "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` // <--- NUEVO: Header de seguridad
+        },
         body: JSON.stringify({
           estado_civil: estadoCivil, conducta, inconvenientes,
           ayuda_psic: ayudaPsic, ayuda_psic_detalle: ayudaPsicDetalle,
@@ -157,7 +162,16 @@ export default function Step2Form() {
           agresion_ocurrida: agresionOcurrida, agresiones,
         }),
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Error al guardar"); }
+
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("No tienes permiso para realizar esta acción o tu sesión expiró.");
+      }
+
+      if (!res.ok) { 
+        const e = await res.json(); 
+        throw new Error(e.error || "Error al guardar los datos del Paso 2"); 
+      }
+
       navigate("/paso3");
     } catch (err) {
       setErrorApi(err.message);
@@ -203,7 +217,6 @@ export default function Step2Form() {
             </div>
           </div>
 
-          {/* Preguntas 1–9 — idénticas al original */}
           <div className="pt-6 border-t border-slate-200">
             <div className="flex items-center gap-3 mb-6">
               <span className="material-symbols-outlined text-2xl" style={{ color: P }}>person</span>
@@ -295,7 +308,7 @@ export default function Step2Form() {
           </div>
         )}
 
-        <FormFooter onBack={() => navigate("/")} nextLabel="Siguiente" loading={loading} />
+        <FormFooter onBack={() => navigate("/paso1")} nextLabel="Siguiente" loading={loading} />
       </form>
     </FormWrapper>
   );
